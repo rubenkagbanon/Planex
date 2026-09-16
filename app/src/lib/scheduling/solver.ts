@@ -110,6 +110,58 @@ interface Attempt {
   seances: Seance[]
   unplaced: { charge: Charge; manquantes: number }[]
   epsBoundaryHits: number
+  qualityPenalty: number
+}
+
+function computeQualityPenalty(
+  seances: Seance[],
+  slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>,
+): number {
+  const occupiedByClassDay = new Map<string, Set<number>>()
+  const subjectIndexesByClassDay = new Map<string, Map<string, Set<number>>>()
+
+  const slotIndex = (seance: Seance): number => {
+    const daySlots = slotsByJourByCycle[seance.cycle]?.get(seance.jour) ?? []
+    return daySlots.findIndex((slot) => slot.creneauId === seance.creneauId)
+  }
+
+  for (const seance of seances) {
+    const classDay = `${seance.niveau}|${seance.section}|${seance.jour}`
+    const index = slotIndex(seance)
+    if (index < 0) continue
+
+    const occupied = occupiedByClassDay.get(classDay) ?? new Set<number>()
+    occupied.add(index)
+    occupiedByClassDay.set(classDay, occupied)
+
+    const subjects = subjectIndexesByClassDay.get(classDay) ?? new Map<string, Set<number>>()
+    const indexes = subjects.get(seance.matiere) ?? new Set<number>()
+    indexes.add(index)
+    subjects.set(seance.matiere, indexes)
+    subjectIndexesByClassDay.set(classDay, subjects)
+  }
+
+  let gaps = 0
+  for (const indexes of occupiedByClassDay.values()) {
+    const ordered = [...indexes].sort((a, b) => a - b)
+    for (let index = ordered[0] + 1; index < ordered[ordered.length - 1]; index++) {
+      if (!indexes.has(index)) gaps++
+    }
+  }
+
+  let separatedSubjectRuns = 0
+  for (const subjects of subjectIndexesByClassDay.values()) {
+    for (const indexes of subjects.values()) {
+      const ordered = [...indexes].sort((a, b) => a - b)
+      let runs = ordered.length > 0 ? 1 : 0
+      for (let i = 1; i < ordered.length; i++) {
+        if (ordered[i] !== ordered[i - 1] + 1) runs++
+      }
+      separatedSubjectRuns += Math.max(0, runs - 1)
+    }
+  }
+
+  return gaps * 10 + separatedSubjectRuns * 3
 }
 
 function runAttempt(
@@ -244,7 +296,12 @@ function runAttempt(
     if (manquantes > 0) unplaced.push({ charge, manquantes })
   }
 
-  return { seances, unplaced, epsBoundaryHits }
+  return {
+    seances,
+    unplaced,
+    epsBoundaryHits,
+    qualityPenalty: computeQualityPenalty(seances, slotsByJourByCycle),
+  }
 }
 
 export function solve(
@@ -257,24 +314,30 @@ export function solve(
   ) as Record<Cycle, Map<string, Slot[]>>
 
   // Sélectionne la meilleure tentative : d'abord le moins de séances manquantes (jamais sacrifié), puis
-  // le plus de séances E.P.S. placées "au bord" de la matinée/après-midi à égalité de séances manquantes.
+  // le moins de défauts de confort, puis le plus de séances E.P.S. placées aux bords.
   let best: Attempt | null = null
   let bestMissing = Infinity
+  let bestQualityPenalty = Infinity
   let bestEpsBoundaryHits = -1
 
   for (let seed = 1; seed <= NUM_ATTEMPTS; seed++) {
     const attempt = runAttempt(charges, slotsByJourByCycle, indisponibiliteKeys, seed)
     const missing = attempt.unplaced.reduce((sum, u) => sum + u.manquantes, 0)
     const better =
-      missing < bestMissing || (missing === bestMissing && attempt.epsBoundaryHits > bestEpsBoundaryHits)
+      missing < bestMissing ||
+      (missing === bestMissing && attempt.qualityPenalty < bestQualityPenalty) ||
+      (missing === bestMissing &&
+        attempt.qualityPenalty === bestQualityPenalty &&
+        attempt.epsBoundaryHits > bestEpsBoundaryHits)
     if (better) {
       best = attempt
       bestMissing = missing
+      bestQualityPenalty = attempt.qualityPenalty
       bestEpsBoundaryHits = attempt.epsBoundaryHits
     }
   }
 
-  const result = best ?? { seances: [], unplaced: [], epsBoundaryHits: 0 }
+  const result = best ?? { seances: [], unplaced: [], epsBoundaryHits: 0, qualityPenalty: 0 }
   return {
     seances: result.seances,
     unplaced: result.unplaced.map(({ charge, manquantes }) => ({

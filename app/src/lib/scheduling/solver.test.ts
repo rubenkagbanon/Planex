@@ -35,3 +35,40 @@ describe('scheduling solver identity keys', () => {
     expect(result.unplaced[0]?.manquantes).toBe(1)
   })
 })
+
+describe('scheduling solver hard constraints', () => {
+  it('does not double-book the same person across college and lycee', () => {
+    const collegeCharge: Charge = { ...charge, professeurId: 'college', niveau: '3e' }
+    const lyceeCharge: Charge = { ...charge, professeurId: 'lycee', niveau: '2nde' }
+
+    const result = solve(
+      [collegeCharge, lyceeCharge],
+      { college: [slot], lycee: [{ ...slot, creneauId: 'lycee-slot-1' }] },
+    )
+
+    expect(result.seances).toHaveLength(1)
+    expect(result.unplaced).toHaveLength(1)
+    expect(result.unplaced[0]?.manquantes).toBe(1)
+  })
+
+  it('keeps an explicit two-period block consecutive', () => {
+    const doubleCharge: Charge = {
+      ...charge,
+      blocks: [2],
+      requiredPeriods: 2,
+      autoConsecutiveSplittable: false,
+    }
+    const secondSlot: Slot = {
+      ...slot,
+      creneauId: 'slot-2',
+      heureDebut: '09:00:00',
+      heureFin: '10:00:00',
+    }
+
+    const result = solve([doubleCharge], { college: [slot, secondSlot], lycee: [] })
+
+    expect(result.seances).toHaveLength(2)
+    expect(result.seances.map((seance) => seance.creneauId)).toEqual(['slot-1', 'slot-2'])
+    expect(result.unplaced).toHaveLength(0)
+  })
+})
