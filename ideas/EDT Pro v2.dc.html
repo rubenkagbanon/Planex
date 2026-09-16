@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: #F3EFE3; font-family: 'Work Sans', sans-serif; }
+    * { box-sizing: border-box; }
+    ::selection { background: #A9762C; color: #fff; }
+    a { color: #A9762C; }
+    a:hover { color: #C08F3E; }
+    @keyframes planexFill {
+      0%, 100% { opacity: 0.3; transform: scale(0.82); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</helmet>
+
+<sc-if value="{{ isLoggedOut }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Connexion" style="min-height:100vh; width:100%; display:flex; align-items:center; justify-content:center; background:#1F3A2E; padding:24px;">
+    <div style="width:100%; max-width:420px; background:#FFFFFF; border-radius:14px; padding:40px 36px; box-shadow:0 20px 60px rgba(0,0,0,0.28);">
+      <div style="margin-bottom:2px;">
+        <dc-import name="Planex Logo" size="34" variant="dark" text-size="26" hint-size="140px,34px"></dc-import>
+      </div>
+      <div style="font-size:13px; color:#83806F; margin-bottom:28px;">Connexion à l'espace de votre établissement</div>
+
+      <div style="font-size:12.5px; font-weight:600; color:#3F3A2E; margin-bottom:7px;">Établissement</div>
+      <select
+        value="{{ loginSchool }}"
+        onChange="{{ onSchoolChange }}"
+        style="width:100%; padding:12px 14px; border:1px solid #DED5BE; border-radius:8px; font-size:14.5px; font-family:'Work Sans', sans-serif; color:#22201A; background:#FFFFFF; margin-bottom:18px;"
+      >
+        <sc-for list="{{ schoolOptions }}" as="opt" hint-placeholder-count="3">
+          <option value="{{ opt }}">{{ opt }}</option>
+        </sc-for>
+      </select>
+
+      <div style="font-size:12.5px; font-weight:600; color:#3F3A2E; margin-bottom:7px;">Code d'accès</div>
+      <input
+        type="password"
+        placeholder="••••••••"
+        value="{{ loginCode }}"
+        onChange="{{ onCodeChange }}"
+        style="width:100%; padding:12px 14px; border:1px solid #DED5BE; border-radius:8px; font-size:14.5px; font-family:'Work Sans', sans-serif; color:#22201A; margin-bottom:24px;"
+      />
+
+      <div
+        onClick="{{ onLogin }}"
+        style="text-align:center; background:#A9762C; color:#F3EFE3; padding:13px; border-radius:8px; font-size:14.5px; font-weight:600; cursor:pointer;"
+        style-hover="background:#C08F3E;"
+      >
+        Se connecter
+      </div>
+      <div style="font-size:12px; color:#A8A08C; margin-top:16px; text-align:center;">Les données restent propres à chaque établissement.</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isLoggedIn }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh; width:100%; background:#F3EFE3; color:#22201A;">
+
+  <!-- TOPBAR -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:0 24px; background:#1F3A2E; color:#F3EFE3; border-bottom:3px solid #A9762C;">
+    <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+      <div style="padding:14px 0; white-space:nowrap; flex-shrink:0;">
+        <dc-import name="Planex Logo" size="22" variant="light" text-size="18" hint-size="100px,22px"></dc-import>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0px; flex-wrap:nowrap; min-width:0;">
+        <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="6">
+          <div
+            onClick="{{ item.onClick }}"
+            style="padding:8px 9px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:500; color:#F3EFE3; background:{{ item.activeBg }}; opacity:{{ item.opacity }}; white-space:nowrap; flex-shrink:0;"
+            style-hover="opacity:1;"
+          >
+            {{ item.label }}
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+      <div style="text-align:right; white-space:nowrap;">
+        <div style="font-size:11.5px; color:#F3EFE3; font-weight:600; white-space:nowrap;">{{ currentSchool }}</div>
+      </div>
+      <div
+        onClick="{{ onLogout }}"
+        style="font-size:11.5px; color:#C9C2A9; cursor:pointer; border:1px solid rgba(246,241,231,0.3); border-radius:7px; padding:6px 11px; white-space:nowrap;"
+        style-hover="color:#F3EFE3; border-color:#F3EFE3;"
+      >
+        Changer
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="min-width:0; padding:48px 56px; max-width:1180px; margin:0 auto;">
+
+    <!-- ============ HOME ============ -->
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Accueil">
+        <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#A9762C; font-weight:600; margin-bottom:14px;">Planification automatique des emplois du temps</div>
+        <h1 style="font-family:'Newsreader', serif; font-size:52px; line-height:1.12; font-weight:600; margin:0 0 22px 0; max-width:680px; color:#1F3A2E;">
+          Des emplois du temps scolaires, sans conflit.
+        </h1>
+        <p style="font-size:17px; line-height:1.65; color:#3F3A2E; max-width:600px; margin:0 0 36px 0;">
+          Planex construit automatiquement les emplois du temps de vos classes, enseignants et salles à partir de vos volumes horaires et de vos contraintes pédagogiques — puis documente chaque arbitrage dans un rapport clair.
+        </p>
+        <div
+          onClick="{{ goDashboard }}"
+          style="display:inline-flex; align-items:center; gap:10px; background:#A9762C; color:#F3EFE3; padding:15px 28px; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 6px 16px rgba(122,46,46,0.22);"
+          style-hover="background:#C08F3E;"
+        >
+          Ouvrir le dashboard →
+        </div>
+
+        <div style="display:flex; gap:1px; background:#DED5BE; margin:64px 0 56px 0; border-radius:12px; overflow:hidden; border:1px solid #DED5BE;">
+          <sc-for list="{{ stats }}" as="stat" hint-placeholder-count="4">
+            <div style="flex:1; background:#FFFFFF; padding:24px 20px; text-align:center;">
+              <div style="font-family:'Newsreader', serif; font-size:32px; font-weight:600; color:#1F3A2E;">{{ stat.value }}</div>
+              <div style="font-size:12.5px; color:#83806F; margin-top:4px;">{{ stat.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:20px;">
+          <sc-for list="{{ features }}" as="feature" hint-placeholder-count="3">
+            <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; padding:26px 24px;">
+              <div style="width:38px; height:38px; border-radius:9px; background:#F3EFE3; border:1px solid #DED5BE; display:flex; align-items:center; justify-content:center; margin-bottom:16px;">
+                <span style="width:12px; height:12px; border-radius:3px; background:{{ feature.color }};"></span>
+              </div>
+              <div style="font-family:'Newsreader', serif; font-size:18px; font-weight:600; color:#1F3A2E; margin-bottom:8px;">{{ feature.title }}</div>
+              <div style="font-size:14px; line-height:1.55; color:#55503F;">{{ feature.desc }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="margin-top:56px; padding-top:24px; border-top:1px solid #DED5BE; font-size:13px; color:#83806F;">
+          Conçu pour les établissements secondaires et universitaires — collèges, lycées, facultés.
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ DASHBOARD ============ -->
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Dashboard">
+        <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#A9762C; font-weight:600; margin-bottom:10px;">Dashboard</div>
+        <h1 style="font-family:'Newsreader', serif; font-size:34px; font-weight:600; margin:0 0 8px 0; color:#1F3A2E;">Génération de l'emploi du temps</h1>
+        <p style="font-size:15px; color:#55503F; margin:0 0 32px 0;">Année scolaire 2025–2026 · {{ currentSchool }}</p>
+
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:32px;">
+          <sc-for list="{{ dataStatus }}" as="d" hint-placeholder-count="3">
+            <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:10px; padding:20px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div style="font-size:13px; color:#83806F; font-weight:500;">{{ d.label }}</div>
+                <div style="width:18px; height:18px; border-radius:50%; background:#2F6F52; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px;">✓</div>
+              </div>
+              <div style="font-family:'Newsreader', serif; font-size:28px; font-weight:600; color:#1F3A2E; margin-top:6px;">{{ d.value }}</div>
+              <div style="font-size:12px; color:#83806F; margin-top:2px;">Données chargées</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; padding:32px; text-align:center; margin-bottom:32px;">
+          <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:15px; color:#55503F; margin-bottom:20px;">Toutes les données sources sont chargées. Prêt à générer l'emploi du temps sous contraintes.</div>
+            <div
+              onClick="{{ runGeneration }}"
+              style="display:inline-flex; align-items:center; gap:10px; background:#1F3A2E; color:#F3EFE3; padding:14px 30px; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer;"
+              style-hover="background:#2E5142;"
+            >
+              Générer l'emploi du temps
+            </div>
+          </sc-if>
+          <sc-if value="{{ isRunning }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:15px; color:#55503F; margin-bottom:16px;">Résolution des contraintes en cours (OR-Tools CP-SAT)…</div>
+            <div style="width:100%; height:6px; background:#DED5BE; border-radius:4px; overflow:hidden;">
+              <div style="width:62%; height:100%; background:#A9762C; border-radius:4px;"></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:14px; color:#2F6F52; font-weight:600; margin-bottom:22px;">Génération terminée — aucun volume horaire sous- ou sur-couvert.</div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; text-align:left; margin-bottom:24px;">
+              <div style="background:#F3EFE3; border-radius:10px; padding:18px;">
+                <div style="font-family:'Newsreader', serif; font-size:24px; font-weight:600; color:#1F3A2E;">0</div>
+                <div style="font-size:12.5px; color:#83806F;">Conflit de ressource</div>
+              </div>
+              <div style="background:#F3EFE3; border-radius:10px; padding:18px;">
+                <div style="font-family:'Newsreader', serif; font-size:24px; font-weight:600; color:#1F3A2E;">452h</div>
+                <div style="font-size:12.5px; color:#83806F;">Volume horaire couvert</div>
+              </div>
+              <div style="background:#F3EFE3; border-radius:10px; padding:18px;">
+                <div style="font-family:'Newsreader', serif; font-size:24px; font-weight:600; color:#A9762C;">3</div>
+                <div style="font-size:12.5px; color:#83806F;">Dérogations à valider</div>
+              </div>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:center;">
+              <div onClick="{{ goTimetable }}" style="background:#1F3A2E; color:#F3EFE3; padding:12px 22px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;" style-hover="background:#2E5142;">Voir l'emploi du temps</div>
+              <div onClick="{{ goReport }}" style="background:#FFFFFF; color:#1F3A2E; border:1px solid #DED5BE; padding:12px 22px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;" style-hover="background:#F3EFE3;">Voir le rapport</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="font-size:12.5px; color:#83806F;">Source : <span onClick="{{ goData }}" style="cursor:pointer; text-decoration:underline; color:#A9762C;">données de l'établissement</span></div>
+      </div>
+    </sc-if>
+
+    <!-- ============ DONNÉES ============ -->
+    <sc-if value="{{ isData }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Données">
+        <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#A9762C; font-weight:600; margin-bottom:10px;">Données</div>
+        <h1 style="font-family:'Newsreader', serif; font-size:34px; font-weight:600; margin:0 0 8px 0; color:#1F3A2E;">Renseigner les données de l'établissement</h1>
+        <p style="font-size:15px; color:#55503F; margin:0 0 28px 0;">Classes, enseignants et salles — modifiables librement, propres à {{ currentSchool }}.</p>
+
+        <div style="display:inline-flex; background:#FFFFFF; border:1px solid #DED5BE; border-radius:9px; padding:4px; margin-bottom:22px; gap:2px;">
+          <sc-for list="{{ dataTabs }}" as="tab" hint-placeholder-count="3">
+            <div onClick="{{ tab.onClick }}" style="padding:9px 20px; border-radius:6px; font-size:13.5px; font-weight:600; cursor:pointer; color:{{ tab.color }}; background:{{ tab.bg }};">{{ tab.label }}</div>
+          </sc-for>
+        </div>
+
+        <!-- Classes table -->
+        <sc-if value="{{ isDataClasses }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; overflow:hidden;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 44px; background:#F3EFE3; border-bottom:1px solid #DED5BE; padding:10px 18px; font-size:11.5px; font-weight:700; color:#83806F; text-transform:uppercase; letter-spacing:0.5px;">
+              <div>Niveau</div><div>Nom de la classe</div><div></div>
+            </div>
+            <sc-for list="{{ classRows }}" as="row" hint-placeholder-count="17">
+              <div style="display:grid; grid-template-columns:1fr 1fr 44px; align-items:center; padding:8px 18px; border-bottom:1px solid #EAE2CF;">
+                <input value="{{ row.niveau }}" onChange="{{ row.onNiveau }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A;" />
+                <input value="{{ row.nom }}" onChange="{{ row.onNom }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A; font-weight:600;" />
+                <div onClick="{{ row.onDelete }}" style="cursor:pointer; color:#A8A08C; font-size:16px; text-align:center;" style-hover="color:#A9762C;">×</div>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ addClass }}" style="margin-top:14px; display:inline-flex; align-items:center; gap:8px; color:#1F3A2E; font-size:14px; font-weight:600; cursor:pointer;" style-hover="color:#A9762C;">+ Ajouter une classe</div>
+        </sc-if>
+
+        <!-- Teachers table -->
+        <sc-if value="{{ isDataTeachers }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; overflow:hidden;">
+            <div style="display:grid; grid-template-columns:0.7fr 1.3fr 1.3fr 0.8fr 44px; background:#F3EFE3; border-bottom:1px solid #DED5BE; padding:10px 18px; font-size:11.5px; font-weight:700; color:#83806F; text-transform:uppercase; letter-spacing:0.5px;">
+              <div>Code</div><div>Nom</div><div>Discipline</div><div>Vol. (h)</div><div></div>
+            </div>
+            <sc-for list="{{ teacherRows }}" as="row" hint-placeholder-count="27">
+              <div style="display:grid; grid-template-columns:0.7fr 1.3fr 1.3fr 0.8fr 44px; align-items:center; padding:8px 18px; border-bottom:1px solid #EAE2CF;">
+                <input value="{{ row.code }}" onChange="{{ row.onCode }}" style="border:none; background:transparent; font-size:13.5px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A;" />
+                <input value="{{ row.nom }}" onChange="{{ row.onNom }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A; font-weight:600;" />
+                <input value="{{ row.discipline }}" onChange="{{ row.onDiscipline }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A;" />
+                <input type="number" value="{{ row.volume }}" onChange="{{ row.onVolume }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A;" />
+                <div onClick="{{ row.onDelete }}" style="cursor:pointer; color:#A8A08C; font-size:16px; text-align:center;" style-hover="color:#A9762C;">×</div>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ addTeacher }}" style="margin-top:14px; display:inline-flex; align-items:center; gap:8px; color:#1F3A2E; font-size:14px; font-weight:600; cursor:pointer;" style-hover="color:#A9762C;">+ Ajouter un enseignant</div>
+        </sc-if>
+
+        <!-- Rooms table -->
+        <sc-if value="{{ isDataRooms }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; overflow:hidden;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 44px; background:#F3EFE3; border-bottom:1px solid #DED5BE; padding:10px 18px; font-size:11.5px; font-weight:700; color:#83806F; text-transform:uppercase; letter-spacing:0.5px;">
+              <div>Nom</div><div>Type</div><div></div>
+            </div>
+            <sc-for list="{{ roomRows }}" as="row" hint-placeholder-count="16">
+              <div style="display:grid; grid-template-columns:1fr 1fr 44px; align-items:center; padding:8px 18px; border-bottom:1px solid #EAE2CF;">
+                <input value="{{ row.nom }}" onChange="{{ row.onNom }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A; font-weight:600;" />
+                <input value="{{ row.type }}" onChange="{{ row.onType }}" style="border:none; background:transparent; font-size:14px; padding:8px 6px; font-family:'Work Sans', sans-serif; color:#22201A;" />
+                <div onClick="{{ row.onDelete }}" style="cursor:pointer; color:#A8A08C; font-size:16px; text-align:center;" style-hover="color:#A9762C;">×</div>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ addRoom }}" style="margin-top:14px; display:inline-flex; align-items:center; gap:8px; color:#1F3A2E; font-size:14px; font-weight:600; cursor:pointer;" style-hover="color:#A9762C;">+ Ajouter une salle</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ============ PARAMÈTRES ============ -->
+    <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Paramètres">
+        <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#A9762C; font-weight:600; margin-bottom:10px;">Paramètres</div>
+        <h1 style="font-family:'Newsreader', serif; font-size:34px; font-weight:600; margin:0 0 8px 0; color:#1F3A2E;">Horaires &amp; contraintes</h1>
+        <p style="font-size:15px; color:#55503F; margin:0 0 32px 0;">Tout paramètre utilisé par le moteur de génération est réglable ici, propre à {{ currentSchool }}.</p>
+
+        <div style="font-family:'Newsreader', serif; font-size:18px; font-weight:600; color:#1F3A2E; margin-bottom:14px;">Grille horaire</div>
+        <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; padding:24px; margin-bottom:36px; display:grid; grid-template-columns:repeat(2,1fr); gap:18px 32px;">
+          <sc-for list="{{ scheduleFields }}" as="f" hint-placeholder-count="6">
+            <div>
+              <div style="font-size:12.5px; font-weight:600; color:#3F3A2E; margin-bottom:6px;">{{ f.label }}</div>
+              <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%; border:1px solid #DED5BE; border-radius:7px; font-size:14px; padding:9px 12px; font-family:'Work Sans', sans-serif; color:#22201A;" />
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="font-family:'Newsreader', serif; font-size:18px; font-weight:600; color:#1F3A2E; margin-bottom:14px;">Contraintes pédagogiques</div>
+        <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; overflow:hidden;">
+          <sc-for list="{{ constraintToggles }}" as="c" hint-placeholder-count="12">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:24px; padding:16px 22px; border-bottom:1px solid #EAE2CF;">
+              <div>
+                <div style="font-size:14px; font-weight:600; color:#22201A;">{{ c.label }}</div>
+                <div style="font-size:12.5px; color:#83806F; margin-top:2px;">{{ c.desc }}</div>
+              </div>
+              <div
+                onClick="{{ c.onToggle }}"
+                style="width:42px; height:24px; border-radius:12px; background:{{ c.trackColor }}; flex-shrink:0; position:relative; cursor:pointer; transition:background 0.15s;"
+              >
+                <div style="width:18px; height:18px; border-radius:50%; background:#FFFFFF; position:absolute; top:3px; left:{{ c.knobLeft }}; transition:left 0.15s; box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ TIMETABLE ============ -->
+    <sc-if value="{{ isTimetable }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Emploi du temps">
+        <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#A9762C; font-weight:600; margin-bottom:10px;">Emploi du temps</div>
+        <h1 style="font-family:'Newsreader', serif; font-size:34px; font-weight:600; margin:0 0 20px 0; color:#1F3A2E;">{{ entityTitle }}</h1>
+
+        <div style="display:inline-flex; background:#FFFFFF; border:1px solid #DED5BE; border-radius:9px; padding:4px; margin-bottom:24px; gap:2px;">
+          <sc-for list="{{ entityTabs }}" as="tab" hint-placeholder-count="3">
+            <div
+              onClick="{{ tab.onClick }}"
+              style="padding:9px 20px; border-radius:6px; font-size:13.5px; font-weight:600; cursor:pointer; color:{{ tab.color }}; background:{{ tab.bg }};"
+            >
+              {{ tab.label }}
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#FFFFFF; border:1px solid #DED5BE; border-radius:12px; overflow:hidden;">
+          <div style="display:grid; grid-template-columns:150px repeat(5,1fr);">
+            <div style="padding:12px 16px; font-size:11.5px; font-weight:600; color:#83806F; text-transform:uppercase; letter-spacing:0.6px; background:#F3EFE3; border-bottom:1px solid #DED5BE;"></div>
+            <sc-for list="{{ days }}" as="day" hint-placeholder-count="5">
+              <div style="padding:12px 16px; font-size:12.5px; font-weight:700; color:#1F3A2E; text-transform:uppercase; letter-spacing:0.5px; background:#F3EFE3; border-bottom:1px solid #DED5BE; border-left:1px solid #DED5BE; text-align:center;">{{ day }}</div>
+            </sc-for>
+          </div>
+
+          <sc-for list="{{ gridRows }}" as="row" hint-placeholder-count="12">
+            <sc-if value="{{ row.isBreak }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:7px 16px; font-size:11.5px; font-weight:600; color:#83806F; background:#FBF9F4; border-bottom:1px solid #DED5BE; text-align:center; letter-spacing:0.3px;">{{ row.label }}</div>
+            </sc-if>
+            <sc-if value="{{ row.isCourse }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid; grid-template-columns:150px repeat(5,1fr); border-bottom:1px solid #DED5BE;">
+                <div style="padding:14px 16px; font-size:12.5px; color:#55503F; font-weight:500;">{{ row.timeLabel }}</div>
+                <sc-for list="{{ row.cells }}" as="cell" hint-placeholder-count="5">
+                  <div style="padding:9px 10px; border-left:1px solid #DED5BE; display:flex; align-items:center; justify-content:center; min-height:52px;">
+                    <sc-if value="{{ cell.hasContent }}" hint-placeholder-val="{{ false }}">
+                      <div style="width:100%; text-align:center; padding:8px 6px; border-radius:6px; font-size:12.5px; font-weight:600; background:{{ cell.bg }}; color:{{ cell.color }};">{{ cell.text }}</div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ REPORT ============ -->
+    <sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Rapport d'arbitrage">
+        <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#A9762C; font-weight:600; margin-bottom:10px;">Rapport d'arbitrage</div>
+        <h1 style="font-family:'Newsreader', serif; font-size:34px; font-weight:600; margin:0 0 8px 0; color:#1F3A2E;">Conflits &amp; dérogations</h1>
+        <p style="font-size:15px; color:#55503F; margin:0 0 32px 0;">Chaque écart aux règles métier est consigné et justifié ci-dessous.</p>
+
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <sc-for list="{{ reportItems }}" as="it" hint-placeholder-count="4">
+            <div style="background:#FFFFFF; border:1px solid #DED5BE; border-left:4px solid {{ it.accent }}; border-radius:8px; padding:18px 22px;">
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                <span style="font-size:10.5px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:{{ it.accent }}; background:{{ it.tagBg }}; padding:3px 9px; border-radius:5px;">{{ it.tag }}</span>
+                <span style="font-size:14.5px; font-weight:600; color:#1F3A2E;">{{ it.title }}</span>
+              </div>
+              <div style="font-size:13.5px; line-height:1.6; color:#55503F;">{{ it.desc }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</sc-if>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+
+const SLOT_DEFS = [
+  { idx: 1, timeLabel: '07h30 – 08h25' },
+  { idx: 2, timeLabel: '08h25 – 09h20' },
+  { idx: 3, timeLabel: '09h20 – 10h15' },
+  { brk: 'Récréation · 10h15 – 10h30' },
+  { idx: 4, timeLabel: '10h30 – 11h25' },
+  { idx: 5, timeLabel: '11h25 – 12h20' },
+  { brk: 'Déjeuner · 12h20 – 14h00' },
+  { idx: 6, timeLabel: '14h00 – 14h55' },
+  { idx: 7, timeLabel: '14h55 – 15h50' },
+  { brk: 'Récréation · 15h50 – 16h05' },
+  { idx: 8, timeLabel: '16h05 – 17h00' },
+  { idx: 9, timeLabel: '17h00 – 17h55' },
+];
+
+// classData: subject grid for classe "3ème 2" -> {code, room}
+const CLASS_DATA = {
+  Lundi:    {1:{code:'FRA',room:'S3'},2:{code:'FRA',room:'S3'},3:{code:'MATH',room:'S3'},4:{code:'HG',room:'S3'},5:{code:'ANG',room:'S3'},6:{code:'SVT',room:'L1'},7:{code:'SVT',room:'L1'},8:{code:'EPS',room:'Terrain'},9:{code:'EPS',room:'Terrain'}},
+  Mardi:    {1:{code:'MATH',room:'S3'},2:{code:'PC',room:'L2'},3:{code:'PC',room:'L2'},4:{code:'ESP',room:'S3'},5:{code:'EDHC',room:'S3'},6:{code:'FRA',room:'S3'},7:{code:'HG',room:'S3'},8:{code:'ANG',room:'S3'},9:null},
+  Mercredi: {1:{code:'MATH',room:'S3'},2:{code:'MATH',room:'S3'},3:{code:'SVT',room:'L1'},4:{code:'FRA',room:'S3'},5:{code:'FRA',room:'S3'}},
+  Jeudi:    {1:{code:'ANG',room:'S3'},2:{code:'HG',room:'S3'},3:{code:'ESP',room:'S3'},4:{code:'MATH',room:'S3'},5:{code:'MATH',room:'S3'},6:{code:'PC',room:'L2'},7:{code:'PC',room:'L2'},8:null,9:{code:'EDHC',room:'S3'}},
+  Vendredi: {1:{code:'FRA',room:'S3'},2:{code:'ANG',room:'S3'},3:{code:'HG',room:'S3'},4:{code:'SVT',room:'L1'},5:{code:'SVT',room:'L1'},6:{code:'MATH',room:'S3'},7:{code:'ESP',room:'S3'},8:{code:'EDHC',room:'S3'},9:null},
+};
+
+// profData: grid for GNAGNE (Français, FRA1) -> {cls, room}
+const PROF_DATA = {
+  Lundi:    {1:{cls:'6ème 1',room:'S1'},2:{cls:'6ème 1',room:'S1'},3:null,4:{cls:'5ème 2',room:'S4'},5:{cls:'5ème 2',room:'S4'},6:null,7:null,8:null,9:null},
+  Mardi:    {1:null,2:{cls:'3ème 2',room:'S3'},3:null,4:null,5:null,6:{cls:'6ème 1',room:'S1'},7:{cls:'6ème 1',room:'S1'},8:{cls:'5ème 2',room:'S4'},9:null},
+  Mercredi: {1:{cls:'5ème 2',room:'S4'},2:{cls:'5ème 2',room:'S4'},3:null,4:{cls:'3ème 2',room:'S3'},5:{cls:'3ème 2',room:'S3'}},
+  Jeudi:    {1:null,2:null,3:null,4:null,5:null,6:{cls:'6ème 1',room:'S1'},7:{cls:'6ème 1',room:'S1'},8:{cls:'5ème 2',room:'S4'},9:{cls:'5ème 2',room:'S4'}},
+  Vendredi: {1:{cls:'3ème 2',room:'S3'},2:null,3:{cls:'5ème 2',room:'S4'},4:null,5:null,6:null,7:null,8:null,9:null},
+};
+
+// roomData: grid for salle S3 -> {cls, code}
+const ROOM_DATA = {
+  Lundi:    {1:{cls:'3ème 2',code:'FRA'},2:{cls:'3ème 2',code:'FRA'},3:{cls:'3ème 2',code:'MATH'},4:{cls:'3ème 2',code:'HG'},5:{cls:'3ème 2',code:'ANG'},6:{cls:'5ème 1',code:'MATH'},7:{cls:'5ème 1',code:'MATH'},8:null,9:null},
+  Mardi:    {1:{cls:'3ème 2',code:'MATH'},2:null,3:null,4:{cls:'3ème 2',code:'ESP'},5:{cls:'3ème 2',code:'EDHC'},6:{cls:'3ème 2',code:'FRA'},7:{cls:'3ème 2',code:'HG'},8:{cls:'3ème 2',code:'ANG'},9:{cls:'6ème 2',code:'FRA'}},
+  Mercredi: {1:{cls:'3ème 2',code:'MATH'},2:{cls:'3ème 2',code:'MATH'},3:{cls:'5ème 1',code:'FRA'},4:{cls:'3ème 2',code:'FRA'},5:{cls:'3ème 2',code:'FRA'}},
+  Jeudi:    {1:{cls:'3ème 2',code:'ANG'},2:{cls:'3ème 2',code:'HG'},3:{cls:'3ème 2',code:'ESP'},4:{cls:'3ème 2',code:'MATH'},5:{cls:'3ème 2',code:'MATH'},6:{cls:'5ème 1',code:'HG'},7:{cls:'5ème 1',code:'HG'},8:null,9:{cls:'3ème 2',code:'EDHC'}},
+  Vendredi: {1:{cls:'3ème 2',code:'FRA'},2:{cls:'3ème 2',code:'ANG'},3:{cls:'3ème 2',code:'HG'},4:null,5:null,6:{cls:'3ème 2',code:'MATH'},7:{cls:'3ème 2',code:'ESP'},8:{cls:'3ème 2',code:'EDHC'},9:null},
+};
+
+const NAVY = '#1F3A2E';
+const BORDEAUX = '#A9762C';
+const CREAM = '#F3EFE3';
+
+const SUBJECT_COLORS = {
+  FRA: '#5B4A8A', MATH: '#2F6F52', SVT: '#2E7D5B', PC: '#2E7D5B', HG: '#8A5A2E',
+  ANG: '#1E4F8A', ESP: '#1E4F8A', EDHC: '#8A6D2E', EPS: '#A9762C', ALL: '#1E4F8A',
+};
+
+function tint(hex) {
+  // returns a light background tint for a given accent hex (fixed small palette)
+  const map = {
+    '#5B4A8A': '#EFEBF6', '#2F6F52': '#E9F2EC', '#2E7D5B': '#E9F2EC',
+    '#8A5A2E': '#F5EEE4', '#1E4F8A': '#E9EFF6', '#8A6D2E': '#F5F0E2',
+    '#A9762C': '#F6EEDC',
+  };
+  return map[hex] || '#F0EDE6';
+}
+
+const SCHOOL_OPTIONS = ['Groupe Scolaire Vatican 2', "Lycée Moderne d'Abidjan", 'Collège Sainte-Marie'];
+const STORAGE_KEY = 'planex_session';
+
+function seedClasses() {
+  return [
+    { niveau: '6ème', nom: '6ème 1' }, { niveau: '6ème', nom: '6ème 2' }, { niveau: '6ème', nom: '6ème 3' },
+    { niveau: '5ème', nom: '5ème 1' }, { niveau: '5ème', nom: '5ème 2' }, { niveau: '5ème', nom: '5ème 3' },
+    { niveau: '4ème', nom: '4ème 1' }, { niveau: '4ème', nom: '4ème 2' }, { niveau: '4ème', nom: '4ème 3' },
+    { niveau: '3ème', nom: '3ème 1' }, { niveau: '3ème', nom: '3ème 2' }, { niveau: '3ème', nom: '3ème 3' }, { niveau: '3ème', nom: '3ème 4' },
+    { niveau: '2nde', nom: '2nde A' }, { niveau: '2nde', nom: '2nde C' },
+    { niveau: '1ère', nom: '1ère A' }, { niveau: '1ère', nom: '1ère D' },
+  ];
+}
+
+function seedTeachers() {
+  return [
+    { code: 'FRA1', nom: 'GNAGNE', discipline: 'Français', volume: 22 },
+    { code: 'FRA2', nom: 'BRISSI', discipline: 'Français', volume: 22 },
+    { code: 'FRA3', nom: 'GUIOUNOU', discipline: 'Français', volume: 22 },
+    { code: 'FRA4', nom: 'GUÉDÉ', discipline: 'Français', volume: 21 },
+    { code: 'MAT1', nom: 'NANGUY', discipline: 'Mathématiques', volume: 20 },
+    { code: 'MAT2', nom: 'AMANI', discipline: 'Mathématiques', volume: 20 },
+    { code: 'MAT3', nom: "M'BRA", discipline: 'Mathématiques', volume: 20 },
+    { code: 'MAT4', nom: '(Recruter)', discipline: 'Mathématiques', volume: 8 },
+    { code: 'SVT1', nom: 'GNAMBA', discipline: 'SVT', volume: 22 },
+    { code: 'SVT2', nom: 'SIDE', discipline: 'SVT', volume: 22 },
+    { code: 'SVT3', nom: '(Recruter)', discipline: 'SVT', volume: 3 },
+    { code: 'PC1', nom: 'ATSE', discipline: 'Physique-Chimie', volume: 22 },
+    { code: 'PC2', nom: "N'GUESSAN", discipline: 'Physique-Chimie', volume: 22 },
+    { code: 'PC3', nom: '(Recruter)', discipline: 'Physique-Chimie', volume: 11 },
+    { code: 'HG1', nom: 'SIE', discipline: 'Histoire-Géographie', volume: 22 },
+    { code: 'HG2', nom: "N'DRI", discipline: 'Histoire-Géographie', volume: 22 },
+    { code: 'HG3', nom: '(Recruter)', discipline: 'Histoire-Géographie', volume: 9 },
+    { code: 'ANG1', nom: 'KADJA', discipline: 'Anglais', volume: 21 },
+    { code: 'ANG2', nom: 'YAO', discipline: 'Anglais', volume: 21 },
+    { code: 'ANG3', nom: '(Recruter)', discipline: 'Anglais', volume: 9 },
+    { code: 'LV2-1', nom: 'SINGO', discipline: 'Allemand', volume: 18 },
+    { code: 'LV2-2', nom: 'KOUADIO', discipline: 'Espagnol', volume: 21 },
+    { code: 'EPS1', nom: 'GNOKO', discipline: 'EPS', volume: 22 },
+    { code: 'EPS2', nom: 'YAPO', discipline: 'EPS', volume: 12 },
+    { code: 'PHILO', nom: '(Recruter)', discipline: 'Philosophie', volume: 5 },
+    { code: 'EDHC1', nom: '(Recruter)', discipline: 'EDHC', volume: 9 },
+    { code: 'EDHC2', nom: 'SINGO', discipline: 'EDHC', volume: 4 },
+  ];
+}
+
+function defaultSettings() {
+  return {
+    matinDebut: '07h30', matinFin: '12h20',
+    recreMatin: '10h15 – 10h30',
+    dejeuner: '12h20 – 14h00',
+    apresMidiDebut: '14h00', apresMidiFin: '17h55',
+    recreApresMidi: '15h50 – 16h05',
+    mercrediBanalise: true,
+    uniciteClasse: true,
+    pasChevauchement: true,
+    max3Niveaux: true,
+    antiMonopole: true,
+    heuresCreusesFin: true,
+    pasDeuxSeancesJour: true,
+    min3DisciplinesJour: true,
+    epsTerrainSeul: true,
+    terrainDeuxClasses: true,
+    seance2hFrancaisMaths: true,
+    pasFrancaisAnglaisConsecutif: true,
+    pasMathsPCConsecutif: true,
+  };
+}
+
+function seedRooms() {
+  const rooms = [];
+  for (let i = 1; i <= 12; i++) rooms.push({ nom: 'S' + i, type: 'Salle' });
+  rooms.push({ nom: 'L1', type: 'Laboratoire' });
+  rooms.push({ nom: 'L2', type: 'Laboratoire' });
+  rooms.push({ nom: 'Amphi', type: 'Polyvalente' });
+  rooms.push({ nom: 'Terrain', type: 'Extérieur' });
+  return rooms;
+}
+
+class Component extends DCLogic {
+  state = {
+    view: 'home',
+    entityType: 'classe',
+    genState: 'idle',
+    school: null,
+    loginSchool: SCHOOL_OPTIONS[0],
+    loginCode: '',
+    dataTab: 'classes',
+    classes: [],
+    teachers: [],
+    rooms: [],
+    settings: defaultSettings(),
+  };
+
+  componentDidMount() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && saved.school) {
+          this.setState({ school: saved.school });
+          this.loadSchoolData(saved.school);
+        }
+      }
+    } catch (e) {}
+  }
+
+  dataKey(school) { return 'planex_data_' + school; }
+
+  loadSchoolData(school) {
+    try {
+      const raw = localStorage.getItem(this.dataKey(school));
+      if (raw) {
+        const saved = JSON.parse(raw);
+        this.setState({
+          classes: saved.classes || seedClasses(),
+          teachers: saved.teachers || seedTeachers(),
+          rooms: saved.rooms || seedRooms(),
+          settings: { ...defaultSettings(), ...(saved.settings || {}) },
+        });
+        return;
+      }
+    } catch (e) {}
+    this.setState({ classes: seedClasses(), teachers: seedTeachers(), rooms: seedRooms(), settings: defaultSettings() });
+  }
+
+  saveSchoolData() {
+    const school = this.state.school;
+    if (!school) return;
+    try {
+      localStorage.setItem(this.dataKey(school), JSON.stringify({
+        classes: this.state.classes, teachers: this.state.teachers, rooms: this.state.rooms, settings: this.state.settings,
+      }));
+    } catch (e) {}
+  }
+
+  setView(v) { this.setState({ view: v }); }
+  setEntityType(t) { this.setState({ entityType: t }); }
+  setDataTab(t) { this.setState({ dataTab: t }); }
+
+  updateSetting(key, value) {
+    this.setState({ settings: { ...this.state.settings, [key]: value } }, () => this.saveSchoolData());
+  }
+  toggleSetting(key) {
+    this.updateSetting(key, !this.state.settings[key]);
+  }
+
+  login() {
+    const school = this.state.loginSchool;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ school })); } catch (e) {}
+    this.setState({ school, view: 'home' });
+    this.loadSchoolData(school);
+  }
+
+  logout() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    this.setState({ school: null, loginCode: '', classes: [], teachers: [], rooms: [] });
+  }
+
+  updateRow(listName, index, field, value) {
+    const list = this.state[listName].slice();
+    list[index] = { ...list[index], [field]: value };
+    this.setState({ [listName]: list }, () => this.saveSchoolData());
+  }
+
+  addRow(listName, blank) {
+    const list = this.state[listName].slice();
+    list.push(blank);
+    this.setState({ [listName]: list }, () => this.saveSchoolData());
+  }
+
+  deleteRow(listName, index) {
+    const list = this.state[listName].slice();
+    list.splice(index, 1);
+    this.setState({ [listName]: list }, () => this.saveSchoolData());
+  }
+
+  buildGridRows(entityType) {
+    const data = entityType === 'classe' ? CLASS_DATA : entityType === 'prof' ? PROF_DATA : ROOM_DATA;
+    return SLOT_DEFS.map((slot, i) => {
+      if (slot.brk) {
+        return { key: 'brk' + i, isBreak: true, isCourse: false, label: slot.brk };
+      }
+      const cells = DAYS.map((day) => {
+        const isWedPM = day === 'Mercredi' && slot.idx >= 6;
+        if (isWedPM) {
+          return { hasContent: true, text: 'Vie scolaire', bg: '#EFEAE0', color: '#83806F' };
+        }
+        const cell = (data[day] || {})[slot.idx];
+        if (!cell) return { hasContent: false };
+        let text, code;
+        if (entityType === 'classe') { code = cell.code; text = cell.code + ' (' + cell.room + ')'; }
+        else if (entityType === 'prof') { code = 'FRA'; text = cell.cls + ' (' + cell.room + ')'; }
+        else { code = cell.code; text = cell.cls + ' (' + cell.code + ')'; }
+        const accent = SUBJECT_COLORS[code] || NAVY;
+        return { hasContent: true, text, bg: tint(accent), color: accent };
+      });
+      return { key: 'row' + i, isBreak: false, isCourse: true, timeLabel: slot.timeLabel, cells };
+    });
+  }
+
+  renderVals() {
+    const view = this.state.view;
+    const entityType = this.state.entityType;
+
+    const navItems = [
+      { key: 'home', label: 'Accueil', onClick: () => this.setView('home') },
+      { key: 'dashboard', label: 'Dashboard', onClick: () => this.setView('dashboard') },
+      { key: 'data', label: 'Données', onClick: () => this.setView('data') },
+      { key: 'settings', label: 'Paramètres', onClick: () => this.setView('settings') },
+      { key: 'timetable', label: 'Planning', onClick: () => this.setView('timetable') },
+      { key: 'report', label: "Rapport", onClick: () => this.setView('report') },
+    ].map((item) => ({
+      ...item,
+      activeBg: view === item.key ? 'rgba(169,118,44,0.35)' : 'transparent',
+      opacity: view === item.key ? 1 : 0.75,
+    }));
+
+    const dataTab = this.state.dataTab;
+    const dataTabs = [
+      { key: 'classes', label: 'Classes', onClick: () => this.setDataTab('classes') },
+      { key: 'teachers', label: 'Enseignants', onClick: () => this.setDataTab('teachers') },
+      { key: 'rooms', label: 'Salles', onClick: () => this.setDataTab('rooms') },
+    ].map((t) => ({ ...t, bg: dataTab === t.key ? NAVY : 'transparent', color: dataTab === t.key ? CREAM : '#55503F' }));
+
+    const classRows = (this.state.classes || []).map((row, i) => ({
+      ...row,
+      onNiveau: (e) => this.updateRow('classes', i, 'niveau', e.target.value),
+      onNom: (e) => this.updateRow('classes', i, 'nom', e.target.value),
+      onDelete: () => this.deleteRow('classes', i),
+    }));
+    const teacherRows = (this.state.teachers || []).map((row, i) => ({
+      ...row,
+      onCode: (e) => this.updateRow('teachers', i, 'code', e.target.value),
+      onNom: (e) => this.updateRow('teachers', i, 'nom', e.target.value),
+      onDiscipline: (e) => this.updateRow('teachers', i, 'discipline', e.target.value),
+      onVolume: (e) => this.updateRow('teachers', i, 'volume', Number(e.target.value)),
+      onDelete: () => this.deleteRow('teachers', i),
+    }));
+    const roomRows = (this.state.rooms || []).map((row, i) => ({
+      ...row,
+      onNom: (e) => this.updateRow('rooms', i, 'nom', e.target.value),
+      onType: (e) => this.updateRow('rooms', i, 'type', e.target.value),
+      onDelete: () => this.deleteRow('rooms', i),
+    }));
+
+    const s = this.state.settings;
+    const scheduleFields = [
+      { key: 'matinDebut', label: 'Début matinée', value: s.matinDebut },
+      { key: 'matinFin', label: 'Fin matinée', value: s.matinFin },
+      { key: 'recreMatin', label: 'Récréation matin', value: s.recreMatin },
+      { key: 'dejeuner', label: 'Pause déjeuner', value: s.dejeuner },
+      { key: 'apresMidiDebut', label: 'Début après-midi', value: s.apresMidiDebut },
+      { key: 'apresMidiFin', label: 'Fin après-midi', value: s.apresMidiFin },
+      { key: 'recreApresMidi', label: 'Récréation après-midi', value: s.recreApresMidi },
+    ].map((f) => ({ ...f, onChange: (e) => this.updateSetting(f.key, e.target.value) }));
+
+    const constraintToggles = [
+      { key: 'mercrediBanalise', label: 'Mercredi après-midi banalisé', desc: 'Aucun cours — Vie scolaire uniquement.' },
+      { key: 'uniciteClasse', label: 'Unicité par classe', desc: 'Interdiction de 2 enseignants d\u2019une même discipline sur une classe.' },
+      { key: 'pasChevauchement', label: 'Pas de chevauchement enseignant', desc: 'Un enseignant ne peut être sur 2 classes au même créneau.' },
+      { key: 'max3Niveaux', label: 'Maximum 3 niveaux par enseignant', desc: 'Limite pédagogique par cycle (collège / lycée).' },
+      { key: 'antiMonopole', label: 'Anti-monopole', desc: 'Un enseignant n\u2019a jamais toutes les classes d\u2019un même niveau.' },
+      { key: 'heuresCreusesFin', label: 'Heures creuses en fin de créneau', desc: 'Jamais entre deux cours — fin de matinée ou d\u2019après-midi.' },
+      { key: 'pasDeuxSeancesJour', label: 'Pas 2 séances même discipline / jour', desc: 'Une seule séance d\u2019une discipline par journée.' },
+      { key: 'min3DisciplinesJour', label: 'Minimum 3 disciplines / jour', desc: 'Nécessaire pour valider la journée d\u2019une classe.' },
+      { key: 'epsTerrainSeul', label: 'EPS exclusivement sur le terrain', desc: '2 premiers ou 2 derniers créneaux de la journée.' },
+      { key: 'terrainDeuxClasses', label: 'Terrain partagé à 2 classes', desc: 'Autorisé si encadré par deux enseignants distincts.' },
+      { key: 'seance2hFrancaisMaths', label: 'Séance 2h Français / Maths', desc: 'Au moins une séance continue de 2h par niveau.' },
+      { key: 'pasFrancaisAnglaisConsecutif', label: 'Pas Français → Anglais consécutif', desc: 'Évite d\u2019enchaîner deux matières du groupe Langues.' },
+      { key: 'pasMathsPCConsecutif', label: 'Pas Maths → Physique-Chimie consécutif', desc: 'Évite d\u2019enchaîner deux matières du groupe Sciences.' },
+    ].map((c) => ({
+      ...c,
+      trackColor: s[c.key] ? '#2F6F52' : '#D9D0B8',
+      knobLeft: s[c.key] ? '21px' : '3px',
+      onToggle: () => this.toggleSetting(c.key),
+    }));
+
+    const entityTabs = [
+      { key: 'classe', label: 'Classe', onClick: () => this.setEntityType('classe') },
+      { key: 'prof', label: 'Professeur', onClick: () => this.setEntityType('prof') },
+      { key: 'salle', label: 'Salle', onClick: () => this.setEntityType('salle') },
+    ].map((t) => ({
+      ...t,
+      bg: entityType === t.key ? NAVY : 'transparent',
+      color: entityType === t.key ? CREAM : '#55503F',
+    }));
+
+    const entityTitle = entityType === 'classe' ? '3ème 2'
+      : entityType === 'prof' ? 'GNAGNE — Français (FRA1)'
+      : 'Salle S3';
+
+    return {
+      isLoggedOut: !this.state.school,
+      isLoggedIn: !!this.state.school,
+      schoolOptions: SCHOOL_OPTIONS,
+      loginSchool: this.state.loginSchool,
+      loginCode: this.state.loginCode,
+      onSchoolChange: (e) => this.setState({ loginSchool: e.target.value }),
+      onCodeChange: (e) => this.setState({ loginCode: e.target.value }),
+      onLogin: () => this.login(),
+      onLogout: () => this.logout(),
+      currentSchool: this.state.school || '',
+
+      isHome: view === 'home',
+      isDashboard: view === 'dashboard',
+      isData: view === 'data',
+      isSettings: view === 'settings',
+      isTimetable: view === 'timetable',
+      isReport: view === 'report',
+      navItems,
+      goDashboard: () => this.setView('dashboard'),
+      goData: () => this.setView('data'),
+      goTimetable: () => this.setView('timetable'),
+      goReport: () => this.setView('report'),
+
+      dataTabs,
+      isDataClasses: dataTab === 'classes',
+      isDataTeachers: dataTab === 'teachers',
+      isDataRooms: dataTab === 'rooms',
+      classRows,
+      teacherRows,
+      roomRows,
+      addClass: () => this.addRow('classes', { niveau: '', nom: '' }),
+      addTeacher: () => this.addRow('teachers', { code: '', nom: '', discipline: '', volume: 0 }),
+      addRoom: () => this.addRow('rooms', { nom: '', type: 'Salle' }),
+
+      scheduleFields,
+      constraintToggles,
+
+      stats: [
+        { label: 'Classes', value: '17' },
+        { label: 'Enseignants', value: '26' },
+        { label: 'Salles', value: '16' },
+        { label: 'Volume hebdo', value: '452h' },
+      ],
+      features: [
+        { title: 'Génération automatique', desc: 'Résolution par contraintes (OR-Tools CP-SAT) : volumes horaires couverts exactement, sans conflit de ressource.', color: BORDEAUX },
+        { title: 'Zéro conflit garanti', desc: 'Classe, enseignant et salle jamais doublés sur un même créneau — troncs communs et tandems gérés explicitement.', color: NAVY },
+        { title: "Rapport d'arbitrage", desc: 'Chaque dérogation ou heure creuse est documentée et justifiée, prête pour la direction pédagogique.', color: '#8A5A2E' },
+      ],
+
+      isIdle: this.state.genState === 'idle',
+      isRunning: this.state.genState === 'running',
+      isDone: this.state.genState === 'done',
+      runGeneration: () => {
+        this.setState({ genState: 'running' });
+        setTimeout(() => this.setState({ genState: 'done' }), 1400);
+      },
+      dataStatus: [
+        { label: 'Classes', value: String((this.state.classes || []).length) },
+        { label: 'Enseignants', value: String((this.state.teachers || []).length) },
+        { label: 'Salles', value: String((this.state.rooms || []).length) },
+      ],
+
+      days: DAYS,
+      entityTabs,
+      entityTitle,
+      gridRows: this.buildGridRows(entityType),
+
+      reportItems: [
+        { tag: 'Dérogation', accent: BORDEAUX, tagBg: '#F6EEDC', title: 'Double affectation — SINGO (Allemand / EDHC 2)', desc: "SINGO intervient à la fois en LV2 Allemand et en EDHC. Dérogation validée : compétence double reconnue, pas de chevauchement de créneaux détecté." },
+        { tag: 'Résolu', accent: '#2F6F52', tagBg: '#E9F2EC', title: 'Conflit de salle — Laboratoire L2, mardi 09h20', desc: 'PC3 et HG3 étaient tous deux affectés au laboratoire L2. PC3 déplacé en L1, tandem SVT/PC préservé.' },
+        { tag: 'Dérogation', accent: BORDEAUX, tagBg: '#F6EEDC', title: 'Postes en recrutement — volume horaire partiel', desc: '7 postes (MAT4, SVT3, PC3, HG3, ANG3, PHILO, EDHC1) sont en recrutement ; leur volume horaire est provisoirement sous-couvert dans les classes concernées.' },
+        { tag: 'Info', accent: '#8A5A2E', tagBg: '#F5F0E2', title: 'Heures creuses résiduelles', desc: '4 heures creuses subsistent, toutes positionnées en fin de matinée ou d\u2019après-midi conformément à la règle de placement.' },
+      ],
+    };
+  }
+}
+
+</script>
+</body>
+</html>

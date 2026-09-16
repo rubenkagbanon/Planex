@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3efe3;
+  --foreground: #22201a;
+  --card: #ffffff;
+  --card-foreground: #22201a;
+  --primary: #a9762c;
+  --primary-foreground: #f3efe3;
+  --secondary: #1f3a2e;
+  --secondary-foreground: #f3efe3;
+  --muted: #ded5be;
+  --muted-foreground: #83806f;
+  --border: #ded5be;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --ring: #a9762c;
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --font-sans: 'Work Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Newsreader', serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+@keyframes planex-fill {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes planex-letter-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
