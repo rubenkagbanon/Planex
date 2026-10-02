@@ -401,7 +401,7 @@ La vue **Salle** est en lecture.
 | Toutes les classes | Grille du jour choisi : toutes les classes × tous les créneaux (matière + professeur) |
 | Salles | Occupation de chaque salle par créneau et taux d'occupation du jour |
 | Contrôles pédagogiques | Entorses aux règles actives, recalculées en direct (y compris après retouches) |
-| Services des professeurs | Heures dues (fiches) / heures placées / écart, par professeur |
+| Services des professeurs | Heures dues (fiches) / heures placées / écart, par professeur, en heures-classe (un tronc commun de 2 classes compte 2 h) ; colonne Présence : temps réel devant les élèves, dont les heures en tronc commun |
 | Dernier rapport | Rapport de la dernière génération |
 | Comparer | Deux usages. **Fait à la main vs Planex** : l'emploi du temps fait à la main de la même année (PDF importés) face à celui de Planex, avec les mêmes données. **Version précédente vs actuelle** : pour qui crée tout dans Planex, ce qui a changé depuis une version enregistrée (sauvegarde automatique avant génération, ou enregistrée depuis le Dashboard). Conflits de chacun, écarts aux règles, écarts de volume, grilles d'une classe côte à côte. Sans rien à comparer, l'onglet explique comment importer des PDF ou enregistrer une version. |
 

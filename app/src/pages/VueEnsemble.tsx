@@ -185,16 +185,28 @@ function Services({ data, grid }: { data: EmploiDuTempsData; grid: Record<string
       const idSet = new Set(ids)
       const fiches = data.professeurs.filter((p) => idSet.has(p.id))
       const dues = fiches.reduce((sum, p) => sum + volumeFicheMinutes(p, nombreClassesParNiveau, grid), 0) / 60
-      const placees = new Set(data.seances.filter((s) => idSet.has(s.professeur_id)).map((s) => `${s.jour}|${s.creneau_id}`)).size
-      return { nom, matieres: [...new Set(fiches.map((f) => f.matiere))].join(', '), dues, placees }
+      const seances = data.seances.filter((s) => idSet.has(s.professeur_id))
+      // Heures-classe : chaque classe servie compte (un tronc commun de 2 classes = 2 h pour 1 h de présence),
+      // comparables aux heures dues, calculées classe par classe depuis la fiche.
+      const placees = new Set(seances.map((s) => `${s.jour}|${s.creneau_id}|${s.niveau}-${s.section}`)).size
+      // Présence : créneaux où le professeur est réellement devant des élèves
+      const presence = new Set(seances.map((s) => `${s.jour}|${s.creneau_id}`)).size
+      const parCreneau = new Map<string, Set<string>>()
+      for (const s of seances) {
+        const k = `${s.jour}|${s.creneau_id}`
+        parCreneau.set(k, (parCreneau.get(k) ?? new Set()).add(`${s.niveau}-${s.section}`))
+      }
+      const troncCommun = [...parCreneau.values()].filter((classes) => classes.size > 1).length
+      return { nom, matieres: [...new Set(fiches.map((f) => f.matiere))].join(', '), dues, placees, presence, troncCommun }
     })
     .sort((a, b) => Math.abs(b.placees - b.dues) - Math.abs(a.placees - a.dues) || a.nom.localeCompare(b.nom))
   const ecarts = lignes.filter((l) => Math.round(l.placees - l.dues) !== 0).length
   return (
     <div>
       <p className="mb-3 text-sm text-muted-foreground">
-        Heures dues = volume de chaque fiche (Paramètres &gt; Professeurs), calculé depuis la grille horaire de référence. Heures placées = créneaux
-        réellement occupés dans l'emploi du temps (une séance de tronc commun compte une fois).{' '}
+        Heures dues = volume de chaque fiche (Paramètres &gt; Professeurs), calculé classe par classe depuis la grille horaire de référence.
+        Heures placées = heures de chaque classe dans l'emploi du temps, comparées aux heures dues. Présence = temps réel du professeur devant les
+        élèves : en tronc commun, il encadre plusieurs classes à la fois, une heure de présence vaut donc plusieurs heures-classe.{' '}
         <strong className="text-foreground">{ecarts} professeur(s) avec un écart.</strong>
       </p>
       <div className="overflow-hidden rounded-xl border border-border">
@@ -206,6 +218,7 @@ function Services({ data, grid }: { data: EmploiDuTempsData; grid: Record<string
               <th className="px-3 py-2 text-center text-xs uppercase">Dues</th>
               <th className="px-3 py-2 text-center text-xs uppercase">Placées</th>
               <th className="px-3 py-2 text-center text-xs uppercase">Écart</th>
+              <th className="px-3 py-2 text-center text-xs uppercase">Présence</th>
             </tr>
           </thead>
           <tbody>
@@ -219,6 +232,12 @@ function Services({ data, grid }: { data: EmploiDuTempsData; grid: Record<string
                   <td className="px-3 py-1.5 text-center">{l.placees}h</td>
                   <td className={cn('px-3 py-1.5 text-center font-semibold', ecart < 0 ? 'text-destructive' : ecart > 0 ? 'text-primary' : 'text-[#2F6F52]')}>
                     {ecart === 0 ? '✓' : `${ecart > 0 ? '+' : ''}${ecart}h`}
+                  </td>
+                  <td className="px-3 py-1.5 text-center">
+                    {l.presence}h
+                    {l.troncCommun > 0 && (
+                      <div className="text-[11px] text-muted-foreground">dont {l.troncCommun}h en tronc commun</div>
+                    )}
                   </td>
                 </tr>
               )
