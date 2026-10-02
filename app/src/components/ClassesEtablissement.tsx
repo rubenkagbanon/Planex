@@ -139,7 +139,7 @@ export function ClassesEtablissement() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="w-full max-w-2xl shrink-0">
       <div className="mb-6 flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
           Indique les niveaux proposés par l'établissement et le nombre de classes pour chacun (ex. 3e : 3 classes

@@ -69,3 +69,91 @@ body {
     transform: scale(1);
   }
 }
+
+/* Impression des emplois du temps (/impression) : une page A4 par document, sans la navigation. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page-impression {
+    break-after: page;
+  }
+  .page-impression:last-child {
+    break-after: auto;
+  }
+}
+
+/* Page d'accueil publique (/) : apparition au défilement et petites animations */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal[data-visible='true'] {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes planex-cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes planex-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes planex-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes planex-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .motion-safe-anim {
+    animation: none !important;
+  }
+}

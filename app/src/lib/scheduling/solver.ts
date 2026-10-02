@@ -1,6 +1,15 @@
 import type { Cycle } from '@/lib/cycle'
-import type { Charge } from './charges'
-import type { Slot } from './slots'
+import { REGLES_DEFAUT, type ReglesPedagogiques } from '@/lib/regles'
+import type { Activite } from './activites'
+import { seSuivent, type Slot } from './slots'
+import {
+  analyserDemiJourneesProfesseurs,
+  analyserEntorses,
+  demiJourneesDeCours,
+  groupSlotsByJour,
+  penaliteEntorses,
+  type Entorse,
+} from './entorses'
 
 export interface Seance {
   professeurId: string
@@ -10,21 +19,57 @@ export interface Seance {
   cycle: Cycle
   jour: string
   creneauId: string
+  salleId: string | null
+  // Identifie les lignes d'une même séance partagée (tandem / tronc commun) à un créneau donné ; null
+  // pour une séance simple. `generate.ts` le convertit en identifiant unique pour la base.
+  groupeKey: string | null
 }
 
-export interface UnplacedCharge {
-  professeurNom: string
-  niveau: string
-  section: number
-  matiere: string
+export interface UnplacedActivite {
+  activite: Activite
   manquantes: number
-  requiredPeriods: number
+}
+
+export interface BlocScinde {
+  activite: Activite
+  taille: number
+}
+
+export interface SalleInput {
+  id: string
+  nom: string
+  type: string
+  capacite: number
+}
+
+// Séance déjà en place que le solveur ne doit pas toucher (verrouillée par le censeur).
+export interface SeanceFixe extends Omit<Seance, 'groupeKey'> {
+  professeurNom: string
+  groupeKey: string | null
+}
+
+export interface SolveOptions {
+  reglesByCycle?: Record<Cycle, ReglesPedagogiques>
+  indisponibiliteKeys?: Set<string>
+  salles?: SalleInput[]
+  // Type de salle exigé par matière (ex. "S.V.T." → "laboratoire")
+  typeSalleParMatiere?: Record<string, string>
+  // Salle attitrée par classe ("niveau-section" → id de salle)
+  salleAttitreeParClasse?: Record<string, string>
+  seancesFixes?: SeanceFixe[]
+  tentatives?: number
+  // Budget de temps maximal (ms) : le solveur s'arrête plus tôt si les tentatives prennent trop de temps
+  budgetMs?: number
 }
 
 const NUM_ATTEMPTS = 400
 
 export function normalizeProfesseurNom(nom: string): string {
-  return nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('fr-FR')
+  return nom.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('fr-FR')
+}
+
+export function profTimeKey(professeurNom: string, jour: string, heureDebut: string, heureFin: string): string {
+  return `${normalizeProfesseurNom(professeurNom)}|${jour}|${heureDebut}-${heureFin}`
 }
 
 // PRNG déterministe (mulberry32) — reproductible pour un seed donné, sans dépendance externe.
@@ -48,305 +93,408 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
   return copy
 }
 
-// Regroupe les créneaux d'un cycle par jour, triés chronologiquement — nécessaire pour chercher des
-// séquences de créneaux consécutifs (blocs) au sein d'une même journée.
-function groupSlotsByJour(slots: Slot[]): Map<string, Slot[]> {
-  const map = new Map<string, Slot[]>()
-  for (const slot of slots) {
-    const arr = map.get(slot.jour)
-    if (arr) arr.push(slot)
-    else map.set(slot.jour, [slot])
-  }
-  for (const arr of map.values()) arr.sort((a, b) => a.heureDebut.localeCompare(b.heureDebut))
-  return map
-}
+const classeCode = (niveau: string, section: number) => `${niveau}-${section}`
 
-// Ordre des positions de départ à essayer dans la journée. Par défaut, du matin vers le soir (ce qui
-// tasse naturellement les séances en début de journée et laisse les heures creuses en fin de segment).
-// Avec `preferBoundaries` (E.P.S., voir plus bas), les deux positions "aux bords" — début de matinée et
-// fin d'après-midi — sont essayées en priorité.
-function candidateStartPositions(dayLength: number, blockSize: number, preferBoundaries: boolean): number[] {
-  const maxStart = dayLength - blockSize
-  if (maxStart < 0) return []
-  const all = Array.from({ length: maxStart + 1 }, (_, i) => i)
-  if (!preferBoundaries) return all
-  const boundaries = [...new Set([0, maxStart])]
-  return [...boundaries, ...all.filter((start) => !boundaries.includes(start))]
-}
-
-// Cherche, dans les créneaux de cours déjà triés d'une journée, une séquence de `blockSize` créneaux
-// libres et consécutifs. `dayCreneaux` ne contient que les créneaux de type "cours" (récréation et
-// déjeuner déjà exclus par `buildSlots`), donc deux créneaux voisins dans ce tableau peuvent être séparés
-// dans la réalité par une récréation ou la pause déjeuner (ex. 1h juste avant la récré + 1h juste après).
-// `strictOnly` limite la recherche aux séquences réellement sans coupure (la fin de l'une = le début de
-// la suivante) — la coupure récréation/déjeuner n'est autorisée qu'en dernier recours, voir `runAttempt`.
-// Premier enchaînement valide trouvé selon l'ordre de `candidateStartPositions`, sans optimiser davantage.
-function findConsecutiveRun(
-  dayCreneaux: Slot[],
-  blockSize: number,
-  isFree: (slot: Slot) => boolean,
-  preferBoundaries: boolean,
-  strictOnly: boolean,
-): Slot[] | null {
-  for (const start of candidateStartPositions(dayCreneaux.length, blockSize, preferBoundaries)) {
-    let ok = true
-    for (let i = 0; i < blockSize; i++) {
-      const slot = dayCreneaux[start + i]
-      if (!isFree(slot)) {
-        ok = false
-        break
-      }
-      if (strictOnly && i > 0 && dayCreneaux[start + i - 1].heureFin !== slot.heureDebut) {
-        ok = false
-        break
-      }
-    }
-    if (ok) return dayCreneaux.slice(start, start + blockSize)
-  }
-  return null
-}
+// Niveaux de relâchement, du plus exigeant au plus permissif :
+// 0 — toutes les règles (souples comprises) et aucune séance coupée par une pause
+// 1 — règles souples relâchées, toujours aucune coupure par une pause
+// 2 — coupure par une pause autorisée (seulement si la règle le permet "exceptionnellement")
+// 3 — dernier recours : la grille horaire de référence passe avant les règles pédagogiques. L'EPS peut
+//     sortir du début de matinée / fin d'après-midi, un cours peut être coupé par une pause, une matière
+//     qui exige une salle spécialisée est placée sans salle si aucune n'est libre. Chaque écart est relevé
+//     par l'analyse des entorses (rapport de génération).
+// Les contraintes physiques (un professeur, une classe, une salle à la fois ; indisponibilités) ne sont
+// jamais relâchées.
+type Niveau = 0 | 1 | 2 | 3
 
 interface Attempt {
   seances: Seance[]
-  unplaced: { charge: Charge; manquantes: number }[]
-  epsBoundaryHits: number
-  qualityPenalty: number
+  unplaced: UnplacedActivite[]
+  scindes: BlocScinde[]
+  entorses: Entorse[]
+  penalite: number
 }
 
-function computeQualityPenalty(
-  seances: Seance[],
-  slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>,
-): number {
-  const occupiedByClassDay = new Map<string, Set<number>>()
-  const subjectIndexesByClassDay = new Map<string, Map<string, Set<number>>>()
-
-  const slotIndex = (seance: Seance): number => {
-    const daySlots = slotsByJourByCycle[seance.cycle]?.get(seance.jour) ?? []
-    return daySlots.findIndex((slot) => slot.creneauId === seance.creneauId)
-  }
-
-  for (const seance of seances) {
-    const classDay = `${seance.niveau}|${seance.section}|${seance.jour}`
-    const index = slotIndex(seance)
-    if (index < 0) continue
-
-    const occupied = occupiedByClassDay.get(classDay) ?? new Set<number>()
-    occupied.add(index)
-    occupiedByClassDay.set(classDay, occupied)
-
-    const subjects = subjectIndexesByClassDay.get(classDay) ?? new Map<string, Set<number>>()
-    const indexes = subjects.get(seance.matiere) ?? new Set<number>()
-    indexes.add(index)
-    subjects.set(seance.matiere, indexes)
-    subjectIndexesByClassDay.set(classDay, subjects)
-  }
-
-  let gaps = 0
-  for (const indexes of occupiedByClassDay.values()) {
-    const ordered = [...indexes].sort((a, b) => a - b)
-    for (let index = ordered[0] + 1; index < ordered[ordered.length - 1]; index++) {
-      if (!indexes.has(index)) gaps++
-    }
-  }
-
-  let separatedSubjectRuns = 0
-  for (const subjects of subjectIndexesByClassDay.values()) {
-    for (const indexes of subjects.values()) {
-      const ordered = [...indexes].sort((a, b) => a - b)
-      let runs = ordered.length > 0 ? 1 : 0
-      for (let i = 1; i < ordered.length; i++) {
-        if (ordered[i] !== ordered[i - 1] + 1) runs++
-      }
-      separatedSubjectRuns += Math.max(0, runs - 1)
-    }
-  }
-
-  return gaps * 10 + separatedSubjectRuns * 3
+interface Context {
+  slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>
+  reglesByCycle: Record<Cycle, ReglesPedagogiques>
+  indisponibiliteKeys: Set<string>
+  salles: SalleInput[]
+  sallesParType: Map<string, SalleInput[]>
+  typeSalleParMatiere: Record<string, string>
+  salleAttitreeParClasse: Record<string, string>
+  seancesFixes: SeanceFixe[]
+  // Nombre de demi-journées de cours dans la semaine (règle "demi-journée libre par professeur")
+  nbDemiJournees: number
 }
 
-function runAttempt(
-  charges: Charge[],
-  slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>,
-  indisponibiliteKeys: Set<string>,
-  seed: number,
-): Attempt {
+function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt {
   const rand = mulberry32(seed)
-  // La préférence "aux bords" pour l'E.P.S. peut, pour un professeur qui couvre beaucoup de classes,
-  // entrer en compétition avec elle-même et rendre une charge injaçable. On ne l'active que dans une
-  // partie des tentatives : `solve` choisit ensuite la meilleure combinaison (zéro séance manquante
-  // d'abord, le plus de placements E.P.S. "au bord" ensuite) — jamais moins de séances placées pour
-  // gagner en confort E.P.S.
-  const epsPreferBoundariesThisAttempt = rand() < 0.6
-  let epsBoundaryHits = 0
+  const { slotsByJourByCycle, reglesByCycle } = ctx
 
-  // Un professeur ne peut être qu'à un seul endroit à la fois, y compris entre collège et lycée quand
-  // ces deux cycles partagent les mêmes horaires — on identifie donc sa disponibilité par jour + plage
-  // horaire réelle plutôt que par identifiant de créneau (propre à un cycle). On identifie aussi la
-  // personne par son nom plutôt que par `professeurId` : une même personne peut avoir plusieurs lignes
-  // `professeurs` (une par matière), et ces lignes ne doivent jamais se chevaucher entre elles non plus.
-  const profKey = (professeurNom: string, jour: string, slot: Slot) =>
-    `${normalizeProfesseurNom(professeurNom)}|${jour}|${slot.heureDebut}-${slot.heureFin}`
-  const classeKey = (niveau: string, section: number, jour: string, creneauId: string) =>
-    `${niveau}|${section}|${jour}|${creneauId}`
-  const chargeDayKey = (charge: Charge, jour: string) => `${charge.niveau}|${charge.section}|${charge.matiere}|${jour}`
-  const classeDayKey = (charge: Charge, jour: string) => `${charge.niveau}|${charge.section}|${jour}`
-
-  // Les indisponibilités déclarées pour un professeur (voir Paramètres > Professeurs) sont une
-  // contrainte dure, jamais violée : on les traite exactement comme une occupation déjà existante avant
-  // même de commencer à placer des séances, avec les mêmes clés que `profKey` (nom + jour + heure réelle).
-  const occupiedProf = new Set(indisponibiliteKeys)
+  const occupiedProf = new Set(ctx.indisponibiliteKeys)
   const occupiedClasse = new Set<string>()
-  const dayLoadCharge = new Map<string, number>() // charge (niveau/section/matiere) × jour
-  const dayLoadClasse = new Map<string, number>() // classe (niveau/section) × jour, toutes matières
+  const salleUsage = new Map<string, number>()
+  // Matières déjà placées par classe/jour/index de créneau — pour les règles d'enchaînement.
+  const matieresParCase = new Map<string, Set<string>>()
+  const dayLoadActivite = new Map<string, number>()
+  const dayLoadClasse = new Map<string, number>()
+  // Demi-journées où chaque professeur (nom normalisé) a déjà cours
+  const demiJourneesProf = new Map<string, Set<string>>()
+  const demiJournee = (slot: Slot) => `${slot.jour}|${slot.apresMidi ? 'apres-midi' : 'matin'}`
+  const noterDemiJournee = (professeurNom: string, slot: Slot) => {
+    const key = normalizeProfesseurNom(professeurNom)
+    demiJourneesProf.set(key, (demiJourneesProf.get(key) ?? new Set<string>()).add(demiJournee(slot)))
+  }
+
+  const classeSlotKey = (code: string, jour: string, creneauId: string) => `${code}|${jour}|${creneauId}`
+  const salleKey = (salleId: string, slot: Slot) => `${salleId}|${slot.jour}|${slot.heureDebut}-${slot.heureFin}`
+  const caseKey = (code: string, jour: string, index: number) => `${code}|${jour}|${index}`
+  const indexOf = (cycle: Cycle, jour: string, creneauId: string) =>
+    (slotsByJourByCycle[cycle]?.get(jour) ?? []).findIndex((s) => s.creneauId === creneauId)
 
   const seances: Seance[] = []
-  const unplaced: { charge: Charge; manquantes: number }[] = []
 
-  // Les charges qui demandent le plus de séances sont les plus difficiles à caser : on les place en
-  // premier (heuristique "most-constrained-first"), en mélangeant l'ordre à chaque tentative pour
-  // explorer différentes solutions.
-  const orderedCharges = shuffle(charges, rand).sort((a, b) => b.requiredPeriods - a.requiredPeriods)
-
-  // Cherche un créneau (ou une séquence consécutive) libre pour `blockSize` séances de cette charge, en
-  // essayant tous les jours du moins chargé au plus chargé, dos-à-dos d'abord puis avec coupure
-  // récréation/déjeuner autorisée en dernier recours. Recalcule l'ordre des jours à chaque appel (l'état
-  // "jour le moins chargé" évolue au fil des placements, y compris pour les scissions de secours).
-  function findPlacement(charge: Charge, blockSize: number, preferBoundaries: boolean): { run: Slot[]; jour: string } | null {
-    const slotsByJour = slotsByJourByCycle[charge.cycle] ?? new Map<string, Slot[]>()
-    const isFree = (slot: Slot) =>
-      !occupiedProf.has(profKey(charge.professeurNom, slot.jour, slot)) &&
-      !occupiedClasse.has(classeKey(charge.niveau, charge.section, slot.jour, slot.creneauId))
-    const orderedJours = shuffle([...slotsByJour.keys()], rand).sort((a, b) => {
-      const chargeDiff = (dayLoadCharge.get(chargeDayKey(charge, a)) ?? 0) - (dayLoadCharge.get(chargeDayKey(charge, b)) ?? 0)
-      if (chargeDiff !== 0) return chargeDiff
-      return (dayLoadClasse.get(classeDayKey(charge, a)) ?? 0) - (dayLoadClasse.get(classeDayKey(charge, b)) ?? 0)
-    })
-    for (const strictOnly of [true, false]) {
-      for (const jour of orderedJours) {
-        const run = findConsecutiveRun(slotsByJour.get(jour) ?? [], blockSize, isFree, preferBoundaries, strictOnly)
-        if (run) return { run, jour }
-      }
-    }
-    return null
-  }
-
-  function commitPlacement(charge: Charge, run: Slot[], jourPlace: string) {
-    if (charge.matiere === 'E.P.S.') {
-      const dayCreneaux = (slotsByJourByCycle[charge.cycle] ?? new Map<string, Slot[]>()).get(jourPlace) ?? []
-      const startIdx = dayCreneaux.findIndex((s) => s.creneauId === run[0].creneauId)
-      const maxStart = dayCreneaux.length - run.length
-      if (startIdx === 0 || startIdx === maxStart) epsBoundaryHits++
-    }
-    for (const slot of run) {
-      occupiedProf.add(profKey(charge.professeurNom, slot.jour, slot))
-      occupiedClasse.add(classeKey(charge.niveau, charge.section, slot.jour, slot.creneauId))
-      seances.push({
-        professeurId: charge.professeurId,
-        niveau: charge.niveau,
-        section: charge.section,
-        matiere: charge.matiere,
-        cycle: charge.cycle,
-        jour: slot.jour,
-        creneauId: slot.creneauId,
-      })
-    }
-    dayLoadCharge.set(chargeDayKey(charge, jourPlace), (dayLoadCharge.get(chargeDayKey(charge, jourPlace)) ?? 0) + run.length)
-    dayLoadClasse.set(classeDayKey(charge, jourPlace), (dayLoadClasse.get(classeDayKey(charge, jourPlace)) ?? 0) + run.length)
-  }
-
-  for (const charge of orderedCharges) {
-    let manquantes = 0
-
-    // Les blocs les plus grands (donc les plus difficiles à caser d'un seul tenant) sont placés en
-    // premier ; l'ordre est mélangé entre blocs de même taille pour varier les tentatives.
-    const orderedBlocks = shuffle(charge.blocks, rand).sort((a, b) => b - a)
-
-    // E.P.S. : priorité aux 2 premiers créneaux de la matinée ou aux 2 derniers de l'après-midi
-    // (changement de tenue, moins de coupure avec le reste des cours).
-    const preferBoundaries = charge.matiere === 'E.P.S.' && epsPreferBoundariesThisAttempt
-
-    for (const blockSize of orderedBlocks) {
-      const placement = findPlacement(charge, blockSize, preferBoundaries)
-
-      if (placement) {
-        commitPlacement(charge, placement.run, placement.jour)
-        continue
-      }
-
-      // Bloc auto-inféré (valeur non décomposée valant 2, pas un "+" explicite) : en tout dernier
-      // recours, si aucun créneau consécutif n'est libre nulle part, on scinde en séances isolées plutôt
-      // que de laisser la classe sans cette matière — jamais pour un bloc explicitement décomposé.
-      if (charge.autoConsecutiveSplittable && blockSize > 1) {
-        let placedUnits = 0
-        for (let i = 0; i < blockSize; i++) {
-          const single = findPlacement(charge, 1, preferBoundaries)
-          if (!single) break
-          commitPlacement(charge, single.run, single.jour)
-          placedUnits++
+  // Les séances verrouillées occupent leurs créneaux avant tout placement.
+  const salleGroupesVus = new Set<string>()
+  for (const fixe of ctx.seancesFixes) {
+    const slot = (slotsByJourByCycle[fixe.cycle]?.get(fixe.jour) ?? []).find((s) => s.creneauId === fixe.creneauId)
+    const code = classeCode(fixe.niveau, fixe.section)
+    occupiedClasse.add(classeSlotKey(code, fixe.jour, fixe.creneauId))
+    if (slot) {
+      occupiedProf.add(profTimeKey(fixe.professeurNom, fixe.jour, slot.heureDebut, slot.heureFin))
+      noterDemiJournee(fixe.professeurNom, slot)
+      if (fixe.salleId) {
+        const usageId = `${fixe.salleId}|${fixe.groupeKey ?? `${code}|${fixe.professeurId}`}|${fixe.jour}|${fixe.creneauId}`
+        if (!salleGroupesVus.has(usageId)) {
+          salleGroupesVus.add(usageId)
+          salleUsage.set(salleKey(fixe.salleId, slot), (salleUsage.get(salleKey(fixe.salleId, slot)) ?? 0) + 1)
         }
-        manquantes += blockSize - placedUnits
-        continue
+      }
+      const index = indexOf(fixe.cycle, fixe.jour, fixe.creneauId)
+      const matieres = matieresParCase.get(caseKey(code, fixe.jour, index)) ?? new Set<string>()
+      matieres.add(fixe.matiere)
+      matieresParCase.set(caseKey(code, fixe.jour, index), matieres)
+    }
+  }
+
+  // Les activités les plus contraintes d'abord : EPS (créneaux imposés), puis regroupements (plusieurs
+  // professeurs ou classes à libérer en même temps), puis les plus gros volumes.
+  const difficulte = (a: Activite) =>
+    (a.bordsDeJournee ? 10_000 : 0) + a.requiredPeriods * (a.groupes.length + a.classes.length) * 10 + Math.max(...a.blocks, 0)
+  const ordered = shuffle(activites, rand).sort((a, b) => difficulte(b) - difficulte(a))
+
+  // Choisit la salle de chaque groupe pour un enchaînement de créneaux. Renvoie null si une salle
+  // obligatoire (type exigé) n'est pas libre — sauf en dernier recours, où la séance est placée sans salle.
+  function choisirSalles(activite: Activite, run: Slot[], dernierRecours = false): (string | null)[] | null {
+    const tentatives = new Map<string, number>()
+    const usage = (salleId: string, slot: Slot) => (salleUsage.get(salleKey(salleId, slot)) ?? 0) + (tentatives.get(salleKey(salleId, slot)) ?? 0)
+    const libre = (salle: SalleInput) => run.every((slot) => usage(salle.id, slot) < salle.capacite)
+    const regles = reglesByCycle[activite.cycle]
+
+    const result: (string | null)[] = []
+    for (let gi = 0; gi < activite.groupes.length; gi++) {
+      const groupe = activite.groupes[gi]
+      let typeExige = ctx.typeSalleParMatiere[groupe.matiere]
+      if (!typeExige && regles.epsAuxBords.actif && groupe.matiere === regles.epsAuxBords.matiere && ctx.sallesParType.has('sport')) {
+        typeExige = 'sport'
+      }
+      const sallesDuType = typeExige ? ctx.sallesParType.get(typeExige) ?? [] : []
+      const premiereClasse = activite.classes[0]
+      const attitreeId = ctx.salleAttitreeParClasse[classeCode(premiereClasse.niveau, premiereClasse.section)]
+      const attitree = attitreeId ? ctx.salles.find((s) => s.id === attitreeId) : undefined
+
+      // Salle spécialisée exigée (laboratoire, informatique, terrain) : obligatoire. Sinon, la salle attitrée
+      // de la classe est préférée, puis n'importe quelle salle de classe libre ; à défaut la séance est placée
+      // sans salle (et signalée) — un établissement a souvent moins de salles que de classes, et plusieurs
+      // classes partagent la même salle attitrée : en faire une contrainte dure rendrait l'emploi du temps
+      // impossible là où la réalité s'en accommode.
+      let candidates: SalleInput[]
+      let obligatoire: boolean
+      if (sallesDuType.length > 0) {
+        candidates = sallesDuType
+        obligatoire = true
+      } else {
+        const sallesDeClasse = ctx.sallesParType.get('classe') ?? []
+        const preferee = attitree && (activite.type !== 'tandem' || gi === 0) ? [attitree] : []
+        candidates = [...preferee, ...sallesDeClasse.filter((s) => s.id !== preferee[0]?.id)]
+        obligatoire = false
+        if (candidates.length === 0) {
+          result.push(null)
+          continue
+        }
       }
 
-      // Bloc jamais scindé : soit les `blockSize` créneaux consécutifs sont tous placés ensemble,
-      // soit aucun ne l'est.
-      manquantes += blockSize
+      const choisie = candidates.find(libre)
+      if (!choisie) {
+        if (obligatoire && !dernierRecours) return null
+        result.push(null)
+        continue
+      }
+      for (const slot of run) tentatives.set(salleKey(choisie.id, slot), (tentatives.get(salleKey(choisie.id, slot)) ?? 0) + 1)
+      result.push(choisie.id)
     }
-
-    if (manquantes > 0) unplaced.push({ charge, manquantes })
+    return result
   }
 
-  return {
-    seances,
-    unplaced,
-    epsBoundaryHits,
-    qualityPenalty: computeQualityPenalty(seances, slotsByJourByCycle),
+  function slotLibre(activite: Activite, slot: Slot): boolean {
+    for (const groupe of activite.groupes) {
+      if (occupiedProf.has(profTimeKey(groupe.professeurNom, slot.jour, slot.heureDebut, slot.heureFin))) return false
+    }
+    for (const classe of activite.classes) {
+      if (occupiedClasse.has(classeSlotKey(classeCode(classe.niveau, classe.section), slot.jour, slot.creneauId))) return false
+    }
+    return true
   }
+
+  // Règles souples vérifiées au niveau 0 uniquement : enchaînements e/f, une séance par jour (h) et
+  // demi-journée libre des professeurs.
+  function respecteReglesSouples(activite: Activite, daySlots: Slot[], start: number, size: number): boolean {
+    const regles = reglesByCycle[activite.cycle]
+    const matieres = activite.groupes.map((g) => g.matiere)
+    const jour = daySlots[start].jour
+    if (regles.demiJourneeLibreProfesseur?.actif && ctx.nbDemiJournees > 1) {
+      const nouvelles = daySlots.slice(start, start + size).map(demiJournee)
+      for (const groupe of activite.groupes) {
+        const deja = demiJourneesProf.get(normalizeProfesseurNom(groupe.professeurNom)) ?? new Set<string>()
+        if (new Set([...deja, ...nouvelles]).size >= ctx.nbDemiJournees) return false
+      }
+    }
+    for (const classe of activite.classes) {
+      const code = classeCode(classe.niveau, classe.section)
+      if (regles.uneSeanceParJour.actif) {
+        for (let i = 0; i < daySlots.length; i++) {
+          const present = matieresParCase.get(caseKey(code, jour, i))
+          if (present && matieres.some((m) => present.has(m))) return false
+        }
+      }
+      for (const config of [regles.pasEnchainerLangues, regles.pasEnchainerSciences]) {
+        if (!config.actif) continue
+        const groupe = new Set(config.matieres)
+        if (!matieres.some((m) => groupe.has(m))) continue
+        const voisins: number[] = []
+        if (start > 0 && seSuivent(daySlots[start - 1], daySlots[start])) voisins.push(start - 1)
+        const fin = start + size - 1
+        if (fin + 1 < daySlots.length && seSuivent(daySlots[fin], daySlots[fin + 1])) voisins.push(fin + 1)
+        for (const v of voisins) {
+          const present = matieresParCase.get(caseKey(code, jour, v))
+          if (present && [...present].some((p) => groupe.has(p) && !matieres.includes(p))) return false
+        }
+      }
+    }
+    return true
+  }
+
+  function positionsCandidates(activite: Activite, daySlots: Slot[], size: number, dernierRecours: boolean): number[] {
+    const maxStart = daySlots.length - size
+    if (maxStart < 0) return []
+    if (activite.bordsDeJournee && !dernierRecours) {
+      // EPS : uniquement les `size` premiers créneaux du matin, ou les `size` derniers de l'après-midi.
+      const positions: number[] = []
+      if (daySlots.slice(0, size).every((s) => !s.apresMidi)) positions.push(0)
+      if (maxStart > 0 && daySlots.slice(maxStart).every((s) => s.apresMidi)) positions.push(maxStart)
+      return positions
+    }
+    // Du matin vers le soir : les heures creuses se retrouvent naturellement en fin de journée.
+    return Array.from({ length: maxStart + 1 }, (_, i) => i)
+  }
+
+  function findPlacement(activite: Activite, size: number, niveau: Niveau): { run: Slot[]; jour: string; salles: (string | null)[] } | null {
+    const regles = reglesByCycle[activite.cycle]
+    const slotsByJour = slotsByJourByCycle[activite.cycle] ?? new Map<string, Slot[]>()
+    const classe0 = activite.classes[0]
+    const loadKey = (jour: string) => `${activite.id}|${jour}`
+    const classeLoadKey = (jour: string) => `${classe0.niveau}|${classe0.section}|${jour}`
+    const jours = shuffle([...slotsByJour.keys()], rand).sort((a, b) => {
+      const diff = (dayLoadActivite.get(loadKey(a)) ?? 0) - (dayLoadActivite.get(loadKey(b)) ?? 0)
+      if (diff !== 0) return diff
+      return (dayLoadClasse.get(classeLoadKey(a)) ?? 0) - (dayLoadClasse.get(classeLoadKey(b)) ?? 0)
+    })
+
+    const coupureInterdite = regles.eviterCoupurePause.actif && niveau < 3 && (niveau < 2 || !regles.eviterCoupurePause.autoriserException)
+    const compacter = regles.heuresCreusesBienPlacees.actif
+
+    // Sans la règle "heures creuses", premier placement valide (jour le moins chargé d'abord). Avec la
+    // règle, on garde le placement qui laisse le moins d'heures creuses mal placées dans la journée des
+    // classes concernées (arrêt immédiat dès qu'un placement n'en crée aucune).
+    let meilleur: { run: Slot[]; jour: string; salles: (string | null)[]; cout: number } | null = null
+    for (const jour of jours) {
+      const daySlots = slotsByJour.get(jour) ?? []
+      for (const start of positionsCandidates(activite, daySlots, size, niveau === 3)) {
+        const run = daySlots.slice(start, start + size)
+        if (!run.every((slot) => slotLibre(activite, slot))) continue
+        if (coupureInterdite && run.some((slot, i) => i > 0 && !seSuivent(run[i - 1], slot))) continue
+        if (niveau === 0 && !respecteReglesSouples(activite, daySlots, start, size)) continue
+        const cout = compacter ? coutHeuresCreuses(activite, daySlots, start, size) : 0
+        if (meilleur && cout >= meilleur.cout) continue
+        const salles = choisirSalles(activite, run, niveau === 3)
+        if (!salles) continue
+        meilleur = { run, jour, salles, cout }
+        if (cout === 0) return meilleur
+      }
+    }
+    return meilleur
+  }
+
+  // Heures creuses que laisserait ce placement dans la journée de chaque classe : le matin, tout trou
+  // avant le dernier cours (les heures creuses n'y sont admises qu'en fin de matinée) ; l'après-midi, tout
+  // trou entre deux cours.
+  function coutHeuresCreuses(activite: Activite, daySlots: Slot[], start: number, size: number): number {
+    const jour = daySlots[start].jour
+    let cout = 0
+    for (const classe of activite.classes) {
+      const code = classeCode(classe.niveau, classe.section)
+      const occupe = (i: number) => (i >= start && i < start + size) || matieresParCase.has(caseKey(code, jour, i))
+      for (const apresMidi of [false, true]) {
+        const indexes = daySlots.map((s, i) => ({ s, i })).filter(({ s }) => s.apresMidi === apresMidi).map(({ i }) => i)
+        const occupes = indexes.filter(occupe)
+        if (occupes.length === 0) continue
+        const debut = apresMidi ? occupes[0] : indexes[0]
+        for (let i = debut; i <= occupes[occupes.length - 1]; i++) if (!occupe(i)) cout++
+      }
+    }
+    return cout
+  }
+
+  function commit(activite: Activite, run: Slot[], jour: string, salles: (string | null)[]) {
+    const partagee = activite.groupes.length * activite.classes.length > 1
+    for (const slot of run) {
+      const index = indexOf(activite.cycle, jour, slot.creneauId)
+      const groupeKey = partagee ? `${activite.id}|${slot.jour}|${slot.creneauId}` : null
+      for (const groupe of activite.groupes) {
+        occupiedProf.add(profTimeKey(groupe.professeurNom, slot.jour, slot.heureDebut, slot.heureFin))
+        noterDemiJournee(groupe.professeurNom, slot)
+      }
+      salles.forEach((salleId) => {
+        if (salleId) salleUsage.set(salleKey(salleId, slot), (salleUsage.get(salleKey(salleId, slot)) ?? 0) + 1)
+      })
+      for (const classe of activite.classes) {
+        const code = classeCode(classe.niveau, classe.section)
+        occupiedClasse.add(classeSlotKey(code, slot.jour, slot.creneauId))
+        const matieres = matieresParCase.get(caseKey(code, jour, index)) ?? new Set<string>()
+        activite.groupes.forEach((groupe, gi) => {
+          matieres.add(groupe.matiere)
+          seances.push({
+            professeurId: groupe.professeurId,
+            niveau: classe.niveau,
+            section: classe.section,
+            matiere: groupe.matiere,
+            cycle: activite.cycle,
+            jour: slot.jour,
+            creneauId: slot.creneauId,
+            salleId: salles[gi] ?? null,
+            groupeKey,
+          })
+        })
+        matieresParCase.set(caseKey(code, jour, index), matieres)
+        const classeLoadKey = `${classe.niveau}|${classe.section}|${jour}`
+        dayLoadClasse.set(classeLoadKey, (dayLoadClasse.get(classeLoadKey) ?? 0) + 1)
+      }
+    }
+    const loadKey = `${activite.id}|${jour}`
+    dayLoadActivite.set(loadKey, (dayLoadActivite.get(loadKey) ?? 0) + run.length)
+  }
+
+  function placer(activite: Activite, size: number): boolean {
+    for (const niveau of [0, 1, 2, 3] as Niveau[]) {
+      const placement = findPlacement(activite, size, niveau)
+      if (placement) {
+        commit(activite, placement.run, placement.jour, placement.salles)
+        return true
+      }
+    }
+    return false
+  }
+
+  const unplaced: UnplacedActivite[] = []
+  const scindes: BlocScinde[] = []
+  for (const activite of ordered) {
+    let manquantes = 0
+    const blocks = shuffle(activite.blocks, rand).sort((a, b) => b - a)
+    for (const size of blocks) {
+      if (placer(activite, size)) continue
+      // Bloc de plusieurs heures sans créneaux consécutifs libres nulle part : la grille horaire passe avant
+      // la forme, il est scindé en séances isolées plutôt que de perdre des heures (signalé au rapport).
+      if (size > 1) {
+        let placees = 0
+        for (let i = 0; i < size; i++) {
+          if (!placer(activite, 1)) break
+          placees++
+        }
+        if (placees > 0) scindes.push({ activite, taille: size })
+        manquantes += size - placees
+        continue
+      }
+      manquantes += size
+    }
+    if (manquantes > 0) unplaced.push({ activite, manquantes })
+  }
+
+  const toutes = [
+    ...ctx.seancesFixes.map((f) => ({ niveau: f.niveau, section: f.section, matiere: f.matiere, cycle: f.cycle, jour: f.jour, creneauId: f.creneauId })),
+    ...seances,
+  ]
+  const nomParId = new Map<string, string>()
+  for (const fixe of ctx.seancesFixes) nomParId.set(fixe.professeurId, fixe.professeurNom)
+  for (const activite of activites) for (const g of activite.groupes) nomParId.set(g.professeurId, g.professeurNom)
+  const entorses = [
+    ...analyserEntorses(toutes, slotsByJourByCycle, reglesByCycle),
+    ...analyserDemiJourneesProfesseurs(
+      [...ctx.seancesFixes, ...seances].map((s) => ({ professeur: nomParId.get(s.professeurId) ?? s.professeurId, cycle: s.cycle, jour: s.jour, creneauId: s.creneauId })),
+      slotsByJourByCycle,
+      reglesByCycle,
+    ),
+  ]
+  return { seances, unplaced, scindes, entorses, penalite: penaliteEntorses(entorses) + scindes.length * 8 }
 }
 
 export function solve(
-  charges: Charge[],
+  activites: Activite[],
   slotsByCycle: Record<Cycle, Slot[]>,
-  indisponibiliteKeys: Set<string> = new Set(),
-): { seances: Seance[]; unplaced: UnplacedCharge[] } {
+  options: SolveOptions = {},
+): { seances: Seance[]; unplaced: UnplacedActivite[]; scindes: BlocScinde[]; entorses: Entorse[]; tentatives: number } {
   const slotsByJourByCycle = Object.fromEntries(
     Object.entries(slotsByCycle).map(([cycle, slots]) => [cycle, groupSlotsByJour(slots)]),
   ) as Record<Cycle, Map<string, Slot[]>>
 
-  // Sélectionne la meilleure tentative : d'abord le moins de séances manquantes (jamais sacrifié), puis
-  // le moins de défauts de confort, puis le plus de séances E.P.S. placées aux bords.
+  const salles = options.salles ?? []
+  const sallesParType = new Map<string, SalleInput[]>()
+  for (const salle of [...salles].sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }))) {
+    sallesParType.set(salle.type, [...(sallesParType.get(salle.type) ?? []), salle])
+  }
+
+  const ctx: Context = {
+    slotsByJourByCycle,
+    reglesByCycle: options.reglesByCycle ?? { college: REGLES_DEFAUT, lycee: REGLES_DEFAUT },
+    indisponibiliteKeys: options.indisponibiliteKeys ?? new Set(),
+    salles,
+    sallesParType,
+    typeSalleParMatiere: options.typeSalleParMatiere ?? {},
+    salleAttitreeParClasse: options.salleAttitreeParClasse ?? {},
+    seancesFixes: options.seancesFixes ?? [],
+    nbDemiJournees: demiJourneesDeCours(slotsByJourByCycle).size,
+  }
+
+  // Meilleure tentative : d'abord le moins de séances manquantes (jamais sacrifié), puis la plus petite
+  // pénalité d'entorses aux règles pédagogiques.
+  const maxTentatives = options.tentatives ?? NUM_ATTEMPTS
+  const budget = options.budgetMs ?? Infinity
+  const debut = Date.now()
   let best: Attempt | null = null
   let bestMissing = Infinity
-  let bestQualityPenalty = Infinity
-  let bestEpsBoundaryHits = -1
+  let tentatives = 0
 
-  for (let seed = 1; seed <= NUM_ATTEMPTS; seed++) {
-    const attempt = runAttempt(charges, slotsByJourByCycle, indisponibiliteKeys, seed)
+  for (let seed = 1; seed <= maxTentatives; seed++) {
+    const attempt = runAttempt(activites, ctx, seed)
+    tentatives++
     const missing = attempt.unplaced.reduce((sum, u) => sum + u.manquantes, 0)
-    const better =
-      missing < bestMissing ||
-      (missing === bestMissing && attempt.qualityPenalty < bestQualityPenalty) ||
-      (missing === bestMissing &&
-        attempt.qualityPenalty === bestQualityPenalty &&
-        attempt.epsBoundaryHits > bestEpsBoundaryHits)
-    if (better) {
+    if (missing < bestMissing || (missing === bestMissing && attempt.penalite < (best?.penalite ?? Infinity))) {
       best = attempt
       bestMissing = missing
-      bestQualityPenalty = attempt.qualityPenalty
-      bestEpsBoundaryHits = attempt.epsBoundaryHits
     }
+    if (Date.now() - debut > budget) break
   }
 
-  const result = best ?? { seances: [], unplaced: [], epsBoundaryHits: 0, qualityPenalty: 0 }
-  return {
-    seances: result.seances,
-    unplaced: result.unplaced.map(({ charge, manquantes }) => ({
-      professeurNom: charge.professeurNom,
-      niveau: charge.niveau,
-      section: charge.section,
-      matiere: charge.matiere,
-      manquantes,
-      requiredPeriods: charge.requiredPeriods,
-    })),
-  }
+  const result = best ?? { seances: [], unplaced: [], scindes: [], entorses: [], penalite: 0 }
+  return { seances: result.seances, unplaced: result.unplaced, scindes: result.scindes, entorses: result.entorses, tentatives }
 }

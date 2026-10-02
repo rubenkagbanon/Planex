@@ -6,6 +6,7 @@ import { useProfile } from '@/hooks/useProfile'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { JOURS_SEMAINE } from '@/lib/joursSemaine'
+import { ReglesPedagogiquesPanel } from '@/components/ReglesPedagogiquesPanel'
 import { cn } from '@/lib/utils'
 
 type Cycle = 'college' | 'lycee'
@@ -286,7 +287,7 @@ function EmploiDuTempsApercu({
                             key={j.key}
                             className="border-l border-border px-3 py-4 text-center text-xs text-muted-foreground/40"
                           >
-                            {banalise ? '—' : formatDuree(c.heureDebut, c.heureFin)}
+                            {banalise ? 'Vie scolaire' : formatDuree(c.heureDebut, c.heureFin)}
                           </td>
                         )
                       })
@@ -425,6 +426,7 @@ function ScheduleForm({ etablissementId, cycles, label }: { etablissementId: str
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['horaires_contraintes', etablissementId, cyclesKey] })
+      queryClient.invalidateQueries({ queryKey: ['horaires_contraintes_regles', etablissementId] })
     },
   })
 
@@ -471,7 +473,7 @@ function ScheduleForm({ etablissementId, cycles, label }: { etablissementId: str
   return (
     <>
     <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-start">
-    <div className="max-w-2xl flex-1 rounded-xl border border-border bg-card p-6">
+    <div className="w-full shrink-0 rounded-xl border border-border bg-card p-6 lg:w-[34rem]">
       <div className="mb-6 flex items-center justify-between gap-4">
         <h3 className="text-base font-semibold text-foreground">{label}</h3>
         <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
@@ -567,50 +569,60 @@ function ScheduleForm({ etablissementId, cycles, label }: { etablissementId: str
       </div>
     </div>
 
-    <div className="w-full max-w-xs shrink-0 overflow-hidden rounded-xl border border-border bg-card">
-      <h3 className="px-6 pt-6 pb-4 font-serif text-lg font-semibold text-foreground">Contraintes pédagogiques</h3>
-      <div className="flex items-center justify-between gap-6 border-t border-border px-5 py-4">
-        <div>
-          <div className="text-sm font-semibold text-foreground">Mercredi après-midi banalisé</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">Aucun cours — Vie scolaire uniquement.</div>
-        </div>
-        <ConstraintToggle
-          checked={form.mercrediApresMidiBanalise}
-          onChange={(v) => toggleImmediate('mercrediApresMidiBanalise', v)}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-6 border-t border-border px-5 py-4">
-        <div>
-          <div className="text-sm font-semibold text-foreground">1 créneau = 1 heure de cours</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            Prend un créneau (dans notre cas {formatDureeMinutes(dureeTypeSeance(form.creneaux))}) pour une
-            séance d'une heure et calcule le nombre d'heures de cours par semaine sur ce principe. Décoché,
-            le calcul utilise vraiment la durée réelle des créneaux.
+    <div className="min-w-0 flex-1 [&>div]:mb-0">
+    <ReglesPedagogiquesPanel
+      etablissementId={etablissementId}
+      cycles={cycles}
+      enTete={
+        <>
+          <div className="flex items-start justify-between gap-6 border-t border-border px-6 py-4">
+            <div>
+              <div className="text-sm font-semibold text-foreground">Mercredi après-midi banalisé</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                Consacré exclusivement aux activités périscolaires et parascolaires : aucun cours, « Vie scolaire »
+                inscrit sur les emplois du temps.
+              </div>
+            </div>
+            <ConstraintToggle
+              checked={form.mercrediApresMidiBanalise}
+              onChange={(v) => toggleImmediate('mercrediApresMidiBanalise', v)}
+            />
           </div>
-        </div>
-        <ConstraintToggle
-          checked={form.creneauEgaleHeure}
-          onChange={(v) => toggleImmediate('creneauEgaleHeure', v)}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-6 border-t border-border px-5 py-4">
-        <div>
-          <div className="text-sm font-semibold text-foreground">Colorer les matières</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            Sur le planning (/planning), chaque matière a sa couleur — pour repérer d'un coup d'œil les
-            cases qui portent la même matière.
+          <div className="flex items-start justify-between gap-6 border-t border-border px-6 py-4">
+            <div>
+              <div className="text-sm font-semibold text-foreground">1 créneau = 1 heure de cours</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                Prend un créneau (dans notre cas {formatDureeMinutes(dureeTypeSeance(form.creneaux))}) pour une
+                séance d'une heure et calcule le nombre d'heures de cours par semaine sur ce principe. Décoché,
+                le calcul utilise vraiment la durée réelle des créneaux.
+              </div>
+            </div>
+            <ConstraintToggle
+              checked={form.creneauEgaleHeure}
+              onChange={(v) => toggleImmediate('creneauEgaleHeure', v)}
+            />
           </div>
-        </div>
-        <ConstraintToggle
-          checked={form.couleurMatieres}
-          onChange={(v) => toggleImmediate('couleurMatieres', v)}
-        />
-      </div>
-      {toggleMutation.isError && (
-        <p className="px-5 pb-4 text-xs text-destructive">
-          {toggleMutation.error instanceof Error ? toggleMutation.error.message : 'Échec de l’enregistrement.'}
-        </p>
-      )}
+          <div className="flex items-start justify-between gap-6 border-t border-border px-6 py-4">
+            <div>
+              <div className="text-sm font-semibold text-foreground">Colorer les matières</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                Sur le planning (/planning), chaque matière a sa couleur — pour repérer d'un coup d'œil les
+                cases qui portent la même matière.
+              </div>
+            </div>
+            <ConstraintToggle
+              checked={form.couleurMatieres}
+              onChange={(v) => toggleImmediate('couleurMatieres', v)}
+            />
+          </div>
+          {toggleMutation.isError && (
+            <p className="px-6 pb-4 text-xs text-destructive">
+              {toggleMutation.error instanceof Error ? toggleMutation.error.message : 'Échec de l’enregistrement.'}
+            </p>
+          )}
+        </>
+      }
+    />
     </div>
     </div>
 

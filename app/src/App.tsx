@@ -2,10 +2,15 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Landing } from '@/pages/Landing'
 import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
+import { MotDePasseOublie } from '@/pages/MotDePasseOublie'
+import { ReinitialiserMotDePasse } from '@/pages/ReinitialiserMotDePasse'
 import { Accueil } from '@/pages/Accueil'
 import { Dashboard } from '@/pages/Dashboard'
 import { Planning } from '@/pages/Planning'
 import { Parametres } from '@/pages/Parametres'
+import { Impression } from '@/pages/Impression'
+import { VueEnsemble } from '@/pages/VueEnsemble'
+import { Bibliotheque } from '@/pages/Bibliotheque'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { RedirectIfAuthed } from '@/components/RedirectIfAuthed'
 
@@ -36,6 +41,16 @@ function App() {
           </RedirectIfAuthed>
         }
       />
+      <Route
+        path="/mot-de-passe-oublie"
+        element={
+          <RedirectIfAuthed>
+            <MotDePasseOublie />
+          </RedirectIfAuthed>
+        }
+      />
+      {/* Hors RedirectIfAuthed : le lien de l'email ouvre cette page avec une session temporaire */}
+      <Route path="/reinitialiser-mot-de-passe" element={<ReinitialiserMotDePasse />} />
       <Route
         path="/accueil"
         element={
@@ -89,6 +104,70 @@ function App() {
         element={
           <ProtectedRoute>
             <Parametres />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parametres-plan"
+        element={
+          <ProtectedRoute>
+            <Parametres />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parametres-salles"
+        element={
+          <ProtectedRoute>
+            <Parametres />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parametres-regroupements"
+        element={
+          <ProtectedRoute>
+            <Parametres />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parametres-modele"
+        element={
+          <ProtectedRoute>
+            <Parametres />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parametres-etablissement"
+        element={
+          <ProtectedRoute>
+            <Parametres />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bibliotheque"
+        element={
+          <ProtectedRoute>
+            <Bibliotheque />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/vue-ensemble"
+        element={
+          <ProtectedRoute>
+            <VueEnsemble />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/impression"
+        element={
+          <ProtectedRoute>
+            <Impression />
           </ProtectedRoute>
         }
       />

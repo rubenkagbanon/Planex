@@ -4,7 +4,9 @@ import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ChampMotDePasse } from '@/components/ChampMotDePasse'
 import { PlanexLogo } from '@/components/PlanexLogo'
+import { traduireErreurAuth } from '@/lib/authErreurs'
 
 export function Login() {
   const { signIn } = useAuth()
@@ -21,7 +23,7 @@ export function Login() {
     const { error } = await signIn(email, password)
     setSubmitting(false)
     if (error) {
-      setError(error.message)
+      setError(traduireErreurAuth(error))
       return
     }
     navigate('/accueil')
@@ -38,13 +40,21 @@ export function Login() {
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Mot de passe</Label>
-            <Input
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Link
+                to={`/mot-de-passe-oublie${email ? `?email=${encodeURIComponent(email)}` : ''}`}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Mot de passe oublié ?
+              </Link>
+            </div>
+            <ChampMotDePasse
               id="password"
-              type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

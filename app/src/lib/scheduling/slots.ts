@@ -13,6 +13,8 @@ export interface Slot {
   creneauId: string
   heureDebut: string
   heureFin: string
+  // Créneau situé après la pause déjeuner (false si le cycle n'a pas de créneau "dejeuner")
+  apresMidi: boolean
 }
 
 function minutesOf(hhmmss: string): number {
@@ -63,8 +65,24 @@ export function buildSlots(
       const banalise =
         jour === 'mercredi' && mercrediApresMidiBanalise && !!heureDejeuner && creneau.heure_debut > heureDejeuner
       if (banalise) continue
-      slots.push({ jour, creneauId: creneau.id, heureDebut: creneau.heure_debut, heureFin: creneau.heure_fin })
+      slots.push({
+        jour,
+        creneauId: creneau.id,
+        heureDebut: creneau.heure_debut,
+        heureFin: creneau.heure_fin,
+        apresMidi: !!heureDejeuner && creneau.heure_debut > heureDejeuner,
+      })
     }
   }
   return slots
+}
+
+// Écart maximal (en minutes) entre deux créneaux pour qu'ils se suivent : au-delà c'est une pause
+// (récréation, déjeuner) ; en deçà, un simple intercours (changement de salle, ex. 11h20 → 11h25).
+export const INTERCOURS_MAX_MINUTES = 9
+
+// Deux créneaux consécutifs sans vraie pause entre eux
+export function seSuivent(a: Pick<Slot, 'heureFin'>, b: Pick<Slot, 'heureDebut'>): boolean {
+  const ecart = minutesOf(b.heureDebut) - minutesOf(a.heureFin)
+  return ecart >= 0 && ecart <= INTERCOURS_MAX_MINUTES
 }

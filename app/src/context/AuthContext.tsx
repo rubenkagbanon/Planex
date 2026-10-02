@@ -6,10 +6,12 @@ interface AuthContextValue {
   session: Session | null
   user: Session['user'] | null
   loading: boolean
+  // Soit `etablissement` (création d'un nouvel établissement, dont on devient administrateur), soit
+  // `codeInvitation` (rejoindre un établissement existant) — voir le trigger `handle_new_user`.
   signUp: (
     email: string,
     password: string,
-    profile: { firstName: string; lastName: string; etablissement: string },
+    profile: { firstName: string; lastName: string; etablissement?: string; codeInvitation?: string },
   ) => ReturnType<typeof supabase.auth.signUp>
   signIn: (email: string, password: string) => ReturnType<typeof supabase.auth.signInWithPassword>
   signOut: () => ReturnType<typeof supabase.auth.signOut>
@@ -38,12 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     user: session?.user ?? null,
     loading,
-    signUp: (email, password, { firstName, lastName, etablissement }) =>
+    signUp: (email, password, { firstName, lastName, etablissement, codeInvitation }) =>
       supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { first_name: firstName, last_name: lastName, etablissement_name: etablissement },
+          data: codeInvitation
+            ? { first_name: firstName, last_name: lastName, code_invitation: codeInvitation }
+            : { first_name: firstName, last_name: lastName, etablissement_name: etablissement },
         },
       }),
     signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),

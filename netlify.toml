@@ -1,0 +1,15 @@
+# Déploiement Netlify de Planex : l'application est dans le dossier app/ (React + Vite).
+[build]
+  base = "app"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite 8 demande Node 20.19+ ou 22.12+
+  NODE_VERSION = "22"
+
+# Application à page unique (React Router) : toute adresse (/login, /planning…) sert index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

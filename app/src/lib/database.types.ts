@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      annees_archivees: {
+        Row: {
+          annee_scolaire: string
+          created_at: string
+          created_by: string | null
+          donnees: Json
+          etablissement_id: string
+          id: string
+          nb_classes: number
+          nb_professeurs: number
+          nb_seances: number
+          origine: string
+          seances: Json
+          versions: Json
+        }
+        Insert: {
+          annee_scolaire: string
+          created_at?: string
+          created_by?: string | null
+          donnees?: Json
+          etablissement_id: string
+          id?: string
+          nb_classes?: number
+          nb_professeurs?: number
+          nb_seances?: number
+          origine?: string
+          seances?: Json
+          versions?: Json
+        }
+        Update: {
+          annee_scolaire?: string
+          created_at?: string
+          created_by?: string | null
+          donnees?: Json
+          etablissement_id?: string
+          id?: string
+          nb_classes?: number
+          nb_professeurs?: number
+          nb_seances?: number
+          origine?: string
+          seances?: Json
+          versions?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "annees_archivees_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       classes_etablissement: {
         Row: {
           etablissement_id: string
@@ -95,7 +148,9 @@ export type Database = {
           matiere: string
           niveau: string
           professeur_id: string
-          salle: string | null
+          salle_id: string | null
+          verrouille: boolean
+          groupe_seance: string | null
           section: number
         }
         Insert: {
@@ -108,7 +163,9 @@ export type Database = {
           matiere: string
           niveau: string
           professeur_id: string
-          salle?: string | null
+          salle_id?: string | null
+          verrouille?: boolean
+          groupe_seance?: string | null
           section: number
         }
         Update: {
@@ -121,7 +178,9 @@ export type Database = {
           matiere?: string
           niveau?: string
           professeur_id?: string
-          salle?: string | null
+          salle_id?: string | null
+          verrouille?: boolean
+          groupe_seance?: string | null
           section?: number
         }
         Relationships: [
@@ -153,16 +212,52 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          code_invitation: string
+          code_etablissement: string | null
+          statut: string | null
+          drena: string | null
+          ministere: string | null
+          adresse: string | null
+          telephone: string | null
+          email: string | null
+          annee_scolaire: string | null
+          signataire_nom: string | null
+          signataire_titre: string | null
+          created_by: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          code_invitation?: string
+          code_etablissement?: string | null
+          statut?: string | null
+          drena?: string | null
+          ministere?: string | null
+          adresse?: string | null
+          telephone?: string | null
+          email?: string | null
+          annee_scolaire?: string | null
+          signataire_nom?: string | null
+          signataire_titre?: string | null
+          created_by?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          code_invitation?: string
+          code_etablissement?: string | null
+          statut?: string | null
+          drena?: string | null
+          ministere?: string | null
+          adresse?: string | null
+          telephone?: string | null
+          email?: string | null
+          annee_scolaire?: string | null
+          signataire_nom?: string | null
+          signataire_titre?: string | null
+          created_by?: string | null
         }
         Relationships: []
       }
@@ -175,6 +270,7 @@ export type Database = {
           id: string
           jours_cours: string[]
           mercredi_apres_midi_banalise: boolean
+          regles: Json
           updated_at: string
         }
         Insert: {
@@ -185,6 +281,7 @@ export type Database = {
           id?: string
           jours_cours?: string[]
           mercredi_apres_midi_banalise?: boolean
+          regles?: Json
           updated_at?: string
         }
         Update: {
@@ -195,6 +292,7 @@ export type Database = {
           id?: string
           jours_cours?: string[]
           mercredi_apres_midi_banalise?: boolean
+          regles?: Json
           updated_at?: string
         }
         Relationships: [
@@ -337,6 +435,7 @@ export type Database = {
           full_name: string | null
           id: string
           last_name: string | null
+          role: string
         }
         Insert: {
           created_at?: string
@@ -346,6 +445,7 @@ export type Database = {
           full_name?: string | null
           id: string
           last_name?: string | null
+          role?: string
         }
         Update: {
           created_at?: string
@@ -355,10 +455,233 @@ export type Database = {
           full_name?: string | null
           id?: string
           last_name?: string | null
+          role?: string
         }
         Relationships: [
           {
             foreignKeyName: "profiles_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      classes_details: {
+        Row: {
+          etablissement_id: string
+          id: string
+          niveau: string
+          section: number
+          professeur_principal: string | null
+          salle_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          etablissement_id: string
+          id?: string
+          niveau: string
+          section: number
+          professeur_principal?: string | null
+          salle_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          etablissement_id?: string
+          id?: string
+          niveau?: string
+          section?: number
+          professeur_principal?: string | null
+          salle_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "classes_details_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      emploi_du_temps_versions: {
+        Row: {
+          etablissement_id: string
+          id: string
+          label: string
+          nb_seances: number
+          seances: Json
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          etablissement_id: string
+          id?: string
+          label: string
+          nb_seances?: number
+          seances?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          etablissement_id?: string
+          id?: string
+          label?: string
+          nb_seances?: number
+          seances?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "emploi_du_temps_versions_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generations: {
+        Row: {
+          etablissement_id: string
+          id: string
+          total_charges: number
+          total_placees: number
+          nb_verrouillees: number
+          warnings: Json
+          entorses: Json
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          etablissement_id: string
+          id?: string
+          total_charges?: number
+          total_placees?: number
+          nb_verrouillees?: number
+          warnings?: Json
+          entorses?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          etablissement_id?: string
+          id?: string
+          total_charges?: number
+          total_placees?: number
+          nb_verrouillees?: number
+          warnings?: Json
+          entorses?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generations_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matieres_salles: {
+        Row: {
+          etablissement_id: string
+          id: string
+          matiere: string
+          type_salle: string
+        }
+        Insert: {
+          etablissement_id: string
+          id?: string
+          matiere: string
+          type_salle: string
+        }
+        Update: {
+          etablissement_id?: string
+          id?: string
+          matiere?: string
+          type_salle?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matieres_salles_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      regroupements: {
+        Row: {
+          etablissement_id: string
+          id: string
+          type: string
+          libelle: string | null
+          matieres: string[]
+          classes: string[]
+          created_at: string
+        }
+        Insert: {
+          etablissement_id: string
+          id?: string
+          type: string
+          libelle?: string | null
+          matieres: string[]
+          classes: string[]
+          created_at?: string
+        }
+        Update: {
+          etablissement_id?: string
+          id?: string
+          type?: string
+          libelle?: string | null
+          matieres?: string[]
+          classes?: string[]
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regroupements_etablissement_id_fkey"
+            columns: ["etablissement_id"]
+            isOneToOne: false
+            referencedRelation: "etablissements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salles: {
+        Row: {
+          etablissement_id: string
+          id: string
+          nom: string
+          type: string
+          capacite: number
+          created_at: string
+        }
+        Insert: {
+          etablissement_id: string
+          id?: string
+          nom: string
+          type?: string
+          capacite?: number
+          created_at?: string
+        }
+        Update: {
+          etablissement_id?: string
+          id?: string
+          nom?: string
+          type?: string
+          capacite?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salles_etablissement_id_fkey"
             columns: ["etablissement_id"]
             isOneToOne: false
             referencedRelation: "etablissements"
@@ -371,7 +694,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      appliquer_deplacements: { Args: { p_deplacements: Json }; Returns: undefined }
+      cloturer_annee: {
+        Args: { p_nouvelle_annee: string; p_vider_emploi_du_temps?: boolean; p_vider_professeurs_principaux?: boolean }
+        Returns: string
+      }
+      definir_role_membre: { Args: { p_user_id: string; p_role: string }; Returns: undefined }
+      enregistrer_version: { Args: { p_label: string }; Returns: string | null }
+      etablissement_nom_disponible: { Args: { p_nom: string }; Returns: boolean }
+      est_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      mon_etablissement_id: { Args: Record<PropertyKey, never>; Returns: string | null }
+      regenerer_code_invitation: { Args: Record<PropertyKey, never>; Returns: string }
+      restaurer_version: { Args: { p_version_id: string }; Returns: number }
+      retirer_membre: { Args: { p_user_id: string }; Returns: undefined }
+      verifier_code_invitation: { Args: { p_code: string }; Returns: string | null }
     }
     Enums: {
       [_ in never]: never

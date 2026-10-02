@@ -170,7 +170,35 @@ npm run test     # Vitest
 - Hors périmètre pour cette itération (volontairement) : allocation des salles (champ optionnel non
   contraint par le solveur)
 
-### ⏳ Étape 4 — Écrans applicatifs restants (à venir)
+### ✅ Étape 4 — Outils du censeur (fait)
+
+Documentation complète (utilisateur et technique) : [README à la racine du projet](../README.md).
+
+- **Sécurité des comptes** : inscription par création d'établissement (admin) ou par **code d'invitation**
+  (membre) ; rôles admin/membre ; un utilisateur ne peut plus changer d'établissement ni de rôle (droits par
+  colonne) ; établissements non listables publiquement (migration `20261001120000_securite_comptes.sql`)
+- **Salles** (facultatives) avec type et capacité, salle exigée par matière, salle attitrée par classe ;
+  **tronc commun** (plusieurs classes ensemble) et **tandem** (groupes en parallèle, dont la LV2
+  Allemand/Espagnol détectée automatiquement)
+- **Règles pédagogiques activables** (e → j + heures creuses), par cycle, avec listes de matières
+  personnalisables ; moteur à niveaux de relâchement et rapport des entorses
+- **Édition manuelle** : glisser-déposer contrôlé sur le planning, verrouillage, annulation ; la
+  génération conserve les séances verrouillées ; garde-fou des conflits en base (trigger différé)
+- **Versions** de l'emploi du temps (sauvegarde automatique avant génération / restauration) et
+  **rapports de génération** persistés
+- **Vue d'ensemble** : toutes les classes, occupation des salles, contrôles pédagogiques, services des
+  professeurs
+- **Impression** au format officiel (en-tête ministère/DRENA, professeur principal, signataire) et **export
+  Excel**, en lot
+- **Import Excel des professeurs** (modèle téléchargeable, lecture tolérante des matières et classes)
+- **Accueil guidé** (parcours en 9 étapes)
+- Correctif : l'enregistrement des professeurs met désormais à jour les fiches en place — il supprimait
+  auparavant tout l'emploi du temps (suppression en cascade)
+- **Apprendre d'un modèle** (Paramètres) : analyse d'un emploi du temps existant (découpage des matières,
+  enchaînements, EPS, pauses, demi-journées libres) et proposition de réglages à appliquer par cycle
+  (`src/lib/apprentissage.ts`, testé sur les 37 emplois du temps réels de Bingerville)
+- Nouvelles règles : **découpage des heures en séances** (mode par matière et modèles par volume, réglages
+  par défaut appris de Bingerville) et **une demi-journée libre par professeur**
 
 ## Notes techniques
 
