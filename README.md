@@ -90,7 +90,9 @@ nom d'établissement à l'inscription pour accéder à toutes ses données.
 | Consulter la Bibliothèque | ✅ | ✅ |
 
 Tout se gère dans **Paramètres › Établissement**. Un établissement garde toujours au moins un
-administrateur.
+administrateur : si le compte du dernier administrateur est supprimé (Supabase › Authentication), le
+membre le plus ancien le devient automatiquement. Supprimer un compte ne supprime jamais l'établissement ni
+ses données ; un établissement dont tous les comptes ont été supprimés reste en base, inaccessible.
 
 ### Garanties côté base de données (Supabase / PostgreSQL)
 
@@ -245,6 +247,25 @@ Le censeur clique sur **« Importer les PDF des emplois du temps de classe »** 
 classe retombe sur son total d'heures annoncé et signale les fichiers illisibles. Le résultat peut être
 analysé tout de suite, puis **enregistré comme version** pour le retrouver plus tard, ici et dans
 Vue d'ensemble › Comparer. Toute version déjà enregistrée peut aussi servir de modèle.
+
+**Reprendre l'emploi du temps importé dans Planex.** Sous l'analyse, « Préparer la reprise » ouvre un
+**bilan avant reprise** :
+
+- **Professeurs du document** : fiche existante reconnue, ou proposition de **créer la fiche** ou de
+  l'**associer** à une fiche dont le nom ressemble (★), ou de ne pas reprendre ses séances. Les classes du
+  document sont ajoutées à la fiche.
+- **Classes, salles et horaires absents** de Planex : créés si la case est cochée. Sinon, les séances
+  concernées sont mises de côté (classes, horaires) ou reprises sans salle.
+- **Problèmes du document** : conflits (un professeur ou une classe à deux endroits à la fois), salles
+  occupées deux fois, volumes différents de la grille horaire.
+
+Tout est pré-coché ; le censeur valide, puis confirme. Les séances sans problème deviennent l'emploi du
+temps de Planex, **verrouillées**. Celles en conflit sont mises de côté avec leur raison : on les place à la
+main ou on laisse une génération compléter. L'emploi du temps actuel est d'abord enregistré comme version,
+et restauré automatiquement si l'écriture échoue. Les séances liées par le même professeur, la même matière
+et le même moment sont reprises ensemble : par exemple, un groupe d'allemand qui réunit les élèves de deux
+classes, en tandem avec l'espagnol. Sur Bingerville : 961 séances lues, **955 reprises**, 6 mises de côté
+pour de vrais conflits du document, 29 reprises sans leur salle (déjà occupée).
 
 **Des PDF faits de manières différentes.** Chaque établissement produit ses emplois du temps à sa façon. La
 lecture ne dépend donc pas d'un logiciel précis :
@@ -549,6 +570,8 @@ l'ordre** :
    sécurité Supabase.
 4. `20261002120000_bibliotheque_annees.sql` : bibliothèque des années (table `annees_archivees`,
    fonction `cloturer_annee`).
+5. `20261004120000_succession_administrateur.sql` : si le compte du dernier administrateur est supprimé,
+   le membre le plus ancien devient administrateur.
 
 Application : `supabase db push`, ou depuis l'éditeur SQL Supabase (coller tout le fichier). Chaque
 fichier s'exécute d'un bloc : en cas d'erreur, rien n'est appliqué. La migration 1 désigne comme

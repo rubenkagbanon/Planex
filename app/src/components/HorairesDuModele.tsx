@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Clock } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { EMPLOI_DU_TEMPS_QUERY_KEY, type EmploiDuTempsData } from '@/hooks/useEmploiDuTempsData'
-import { horairesDuModele, type CreneauPropose, type HorairesModele } from '@/lib/apprentissage'
+import { horairesDuModele, type CreneauPropose } from '@/lib/apprentissage'
+import { enregistrerHorairesCycle } from '@/lib/horairesApplication'
 import type { Cycle } from '@/lib/cycle'
 import type { LigneVersion } from '@/lib/importEdtPdf'
 import { JOURS_SEMAINE } from '@/lib/joursSemaine'
@@ -51,7 +51,7 @@ export function HorairesDuModele({ lignes, data, etablissementId }: { lignes: Li
   const appliquer = useMutation({
     mutationFn: async () => {
       for (const { hm, aSupprimer, aAjouter } of aAppliquer) {
-        await enregistrerCycle(etablissementId, hm, aSupprimer.map((c) => c.id), aAjouter)
+        await enregistrerHorairesCycle(etablissementId, hm, aSupprimer.map((c) => c.id), aAjouter)
       }
     },
     onSuccess: () => {
@@ -163,35 +163,4 @@ export function HorairesDuModele({ lignes, data, etablissementId }: { lignes: Li
       )}
     </div>
   )
-}
-
-async function enregistrerCycle(etablissementId: string, hm: HorairesModele, idsASupprimer: string[], aAjouter: CreneauPropose[]) {
-  // Jours et mercredi après-midi ; les autres réglages du cycle (règles, couleurs…) ne sont pas touchés
-  const { data: existante, error: lectureError } = await supabase
-    .from('horaires_contraintes')
-    .select('id')
-    .eq('etablissement_id', etablissementId)
-    .eq('cycle', hm.cycle)
-    .maybeSingle()
-  if (lectureError) throw lectureError
-  const { error: contrainteError } = existante
-    ? await supabase
-        .from('horaires_contraintes')
-        .update({ jours_cours: hm.jours, mercredi_apres_midi_banalise: hm.mercrediApresMidiBanalise })
-        .eq('id', existante.id)
-    : await supabase
-        .from('horaires_contraintes')
-        .insert({ etablissement_id: etablissementId, cycle: hm.cycle, jours_cours: hm.jours, mercredi_apres_midi_banalise: hm.mercrediApresMidiBanalise })
-  if (contrainteError) throw contrainteError
-
-  if (idsASupprimer.length > 0) {
-    const { error } = await supabase.from('creneaux_horaires').delete().in('id', idsASupprimer)
-    if (error) throw error
-  }
-  if (aAjouter.length > 0) {
-    const { error } = await supabase.from('creneaux_horaires').insert(
-      aAjouter.map((c) => ({ etablissement_id: etablissementId, cycle: hm.cycle, heure_debut: c.heureDebut, heure_fin: c.heureFin, type: c.type })),
-    )
-    if (error) throw error
-  }
 }

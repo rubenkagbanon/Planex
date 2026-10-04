@@ -4,6 +4,7 @@ import { FileUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { HorairesDuModele } from '@/components/HorairesDuModele'
+import { RepriseEmploiDuTemps } from '@/components/RepriseEmploiDuTemps'
 import {
   cleLibelle,
   extrairePdf,
@@ -400,6 +401,16 @@ export function ApprentissageModele() {
       </div>
 
       {modeleSource && etablissementId && <HorairesDuModele lignes={modeleSource.seances} data={data} etablissementId={etablissementId} />}
+
+      {modeleSource && etablissementId && (
+        <RepriseEmploiDuTemps
+          key={modeleSource.id}
+          lignes={modeleSource.seances}
+          classesPdf={versionId === SOURCE_PDF ? importPdf?.classes : undefined}
+          data={data}
+          etablissementId={etablissementId}
+        />
+      )}
 
       {!modeleSource ? null : !duCycle ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
