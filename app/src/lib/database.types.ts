@@ -695,6 +695,7 @@ export type Database = {
     }
     Functions: {
       appliquer_deplacements: { Args: { p_deplacements: Json }; Returns: undefined }
+      supprimer_donnees_etablissement: { Args: { p_avec_bibliotheque?: boolean }; Returns: undefined }
       cloturer_annee: {
         Args: { p_nouvelle_annee: string; p_vider_emploi_du_temps?: boolean; p_vider_professeurs_principaux?: boolean }
         Returns: string

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, RefreshCw } from 'lucide-react'
+import { Copy, RefreshCw, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useEtablissement } from '@/hooks/useEtablissement'
@@ -215,7 +215,82 @@ export function EtablissementInfos() {
             ))}
           </ul>
         </div>
+
+        {isAdmin && <SuppressionDonnees nomEtablissement={etablissement?.name ?? ''} />}
       </div>
+    </div>
+  )
+}
+
+// Zone sensible : suppression de toutes les données créées pour l'établissement (paramétrage, emploi du
+// temps, versions, rapports, et la bibliothèque si cochée). L'établissement et les comptes restent.
+function SuppressionDonnees({ nomEtablissement }: { nomEtablissement: string }) {
+  const queryClient = useQueryClient()
+  const [ouvert, setOuvert] = useState(false)
+  const [avecBibliotheque, setAvecBibliotheque] = useState(false)
+  const [saisie, setSaisie] = useState('')
+  const [fait, setFait] = useState(false)
+
+  const supprimer = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('supprimer_donnees_etablissement', { p_avec_bibliotheque: avecBibliotheque })
+      if (error) {
+        if (/could not find the function|does not exist/i.test(error.message)) {
+          throw new Error('Applique d’abord la migration 20261004120000_succession_administrateur.sql dans l’éditeur SQL de Supabase.')
+        }
+        throw error
+      }
+    },
+    onSuccess: () => {
+      setFait(true)
+      setOuvert(false)
+      setSaisie('')
+      queryClient.invalidateQueries()
+    },
+  })
+
+  const confirme = saisie.trim().toLocaleLowerCase('fr-FR') === nomEtablissement.trim().toLocaleLowerCase('fr-FR') && nomEtablissement.trim() !== ''
+
+  return (
+    <div className="rounded-xl border border-destructive/40 bg-card p-6">
+      <h3 className="mb-1 font-serif text-lg font-semibold text-destructive">Zone sensible</h3>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Supprime toutes les données créées pour l’établissement, pour repartir de zéro. L’en-tête, le code d’invitation et les
+        comptes des membres sont conservés.
+      </p>
+      {fait && <p className="mb-3 text-sm text-primary">Toutes les données ont été supprimées.</p>}
+      {!ouvert ? (
+        <Button variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10" onClick={() => setOuvert(true)}>
+          <Trash2 className="mr-1.5 h-4 w-4" /> Supprimer toutes les données
+        </Button>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <div className="rounded-md bg-destructive/5 p-3 text-xs text-foreground">
+            <p className="mb-1 font-semibold text-destructive">Seront supprimés définitivement :</p>
+            classes et détail des classes, professeurs et indisponibilités, salles, créneaux, jours et règles pédagogiques, grille
+            horaire personnalisée, regroupements, emploi du temps, versions et rapports de génération.
+          </div>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" className="mt-0.5" checked={avecBibliotheque} onChange={(e) => setAvecBibliotheque(e.target.checked)} />
+            Supprimer aussi la Bibliothèque des années (années archivées)
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span>
+              Pour confirmer, tape le nom de l’établissement : <strong className="text-foreground">{nomEtablissement}</strong>
+            </span>
+            <Input value={saisie} onChange={(e) => setSaisie(e.target.value)} placeholder={nomEtablissement} />
+          </label>
+          <div className="flex gap-2">
+            <Button className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={!confirme || supprimer.isPending} onClick={() => supprimer.mutate()}>
+              {supprimer.isPending ? 'Suppression…' : 'Supprimer définitivement'}
+            </Button>
+            <Button variant="outline" onClick={() => { setOuvert(false); setSaisie('') }}>
+              Annuler
+            </Button>
+          </div>
+          {supprimer.isError && <p className="text-xs text-destructive">{supprimer.error instanceof Error ? supprimer.error.message : 'Échec de la suppression.'}</p>}
+        </div>
+      )}
     </div>
   )
 }

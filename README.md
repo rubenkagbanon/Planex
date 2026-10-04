@@ -88,6 +88,12 @@ nom d'établissement à l'inscription pour accéder à toutes ses données.
 | Nommer / retirer un administrateur, retirer un membre | ✅ | ❌ |
 | Clôturer l'année, ranger ou supprimer une année de la Bibliothèque | ✅ | ❌ |
 | Consulter la Bibliothèque | ✅ | ✅ |
+| Supprimer toutes les données de l'établissement (zone sensible) | ✅ | ❌ |
+
+**Zone sensible** (sous la liste des membres, administrateur seulement) : « Supprimer toutes les données »
+efface le paramétrage, l'emploi du temps, les versions et les rapports — et la Bibliothèque si on le coche —
+après avoir retapé le nom de l'établissement. L'en-tête, le code d'invitation et les comptes sont gardés.
+Tout est supprimé en une seule opération en base : rien ne l'est si une étape échoue.
 
 Tout se gère dans **Paramètres › Établissement**. Un établissement garde toujours au moins un
 administrateur : si le compte du dernier administrateur est supprimé (Supabase › Authentication), le
@@ -571,7 +577,8 @@ l'ordre** :
 4. `20261002120000_bibliotheque_annees.sql` : bibliothèque des années (table `annees_archivees`,
    fonction `cloturer_annee`).
 5. `20261004120000_succession_administrateur.sql` : si le compte du dernier administrateur est supprimé,
-   le membre le plus ancien devient administrateur.
+   le membre le plus ancien devient administrateur ; fonction `supprimer_donnees_etablissement` (bouton
+   « Supprimer toutes les données » de Paramètres › Établissement).
 
 Application : `supabase db push`, ou depuis l'éditeur SQL Supabase (coller tout le fichier). Chaque
 fichier s'exécute d'un bloc : en cas d'erreur, rien n'est appliqué. La migration 1 désigne comme
