@@ -111,6 +111,7 @@ function EnTete({ etablissement }: { etablissement: Tables<'etablissements'> | n
             <div>---------------</div>
           </>
         )}
+        {etablissement?.logo && <img src={etablissement.logo} alt="" className="mx-auto my-1 h-16 w-auto object-contain" />}
         <div className="mt-1 font-bold uppercase">{etablissement?.name}</div>
         {etablissement?.adresse && <div className="font-bold">{etablissement.adresse}</div>}
         {etablissement?.telephone && <div className="font-bold">Tél : {etablissement.telephone}</div>}

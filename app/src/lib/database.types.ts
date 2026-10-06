@@ -223,6 +223,7 @@ export type Database = {
           annee_scolaire: string | null
           signataire_nom: string | null
           signataire_titre: string | null
+          logo: string | null
           created_by: string | null
         }
         Insert: {
@@ -240,6 +241,7 @@ export type Database = {
           annee_scolaire?: string | null
           signataire_nom?: string | null
           signataire_titre?: string | null
+          logo?: string | null
           created_by?: string | null
         }
         Update: {
@@ -257,6 +259,7 @@ export type Database = {
           annee_scolaire?: string | null
           signataire_nom?: string | null
           signataire_titre?: string | null
+          logo?: string | null
           created_by?: string | null
         }
         Relationships: []

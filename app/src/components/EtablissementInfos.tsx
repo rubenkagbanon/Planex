@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, RefreshCw, Trash2 } from 'lucide-react'
+import { Copy, ImageIcon, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useEtablissement } from '@/hooks/useEtablissement'
@@ -121,6 +121,7 @@ export function EtablissementInfos() {
             {saveMutation.error instanceof Error ? saveMutation.error.message : 'Échec de l’enregistrement.'}
           </p>
         )}
+        <LogoEtablissement etablissementId={etablissementId} logo={etablissement?.logo ?? null} isAdmin={isAdmin} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {CHAMPS.map((champ) => (
             <div key={champ.key} className={champ.key === 'name' || champ.key === 'ministere' ? 'flex flex-col gap-2 sm:col-span-2' : 'flex flex-col gap-2'}>
@@ -217,6 +218,94 @@ export function EtablissementInfos() {
         </div>
 
         {isAdmin && <SuppressionDonnees nomEtablissement={etablissement?.name ?? ''} />}
+      </div>
+    </div>
+  )
+}
+
+// Réduit l'image (300 px au plus grand côté) et la convertit en data URL : PNG pour garder la transparence
+// d'un tampon détouré, JPEG sinon (plus léger).
+async function preparerLogo(fichier: File): Promise<string> {
+  if (!/^image\/(png|jpeg)$/.test(fichier.type)) throw new Error('Choisis une image PNG ou JPG.')
+  const url = URL.createObjectURL(fichier)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Image illisible.'))
+      img.src = url
+    })
+    const echelle = Math.min(1, 300 / Math.max(image.naturalWidth, image.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * echelle))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * echelle))
+    canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height)
+    return fichier.type === 'image/png' ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.9)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function LogoEtablissement({ etablissementId, logo, isAdmin }: { etablissementId: string | null; logo: string | null; isAdmin: boolean }) {
+  const queryClient = useQueryClient()
+  const enregistrer = useMutation({
+    mutationFn: async (valeur: string | null) => {
+      const { error } = await supabase.from('etablissements').update({ logo: valeur }).eq('id', etablissementId!)
+      if (error) {
+        if (/logo/i.test(error.message) && /column|schema cache|permission/i.test(error.message)) {
+          throw new Error('Applique d’abord la migration 20261006120000_logo_etablissement.sql dans l’éditeur SQL de Supabase.')
+        }
+        throw error
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['etablissement', etablissementId] }),
+  })
+  const [erreur, setErreur] = useState<string | null>(null)
+
+  async function choisir(fichier: File | undefined) {
+    if (!fichier) return
+    setErreur(null)
+    try {
+      enregistrer.mutate(await preparerLogo(fichier))
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'Image illisible.')
+    }
+  }
+
+  const message = erreur ?? (enregistrer.error instanceof Error ? enregistrer.error.message : null)
+
+  return (
+    <div className="mb-5 flex items-center gap-4 rounded-lg border border-border bg-background p-4">
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-border bg-card">
+        {logo ? <img src={logo} alt="Logo de l'établissement" className="max-h-full max-w-full object-contain" /> : <ImageIcon className="h-6 w-6 text-muted-foreground" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">Logo de l'établissement</div>
+        <p className="text-xs text-muted-foreground">Imprimé sous la DRENA, au-dessus du nom. PNG ou JPG.</p>
+        {isAdmin && (
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+              <Upload className="h-3 w-3" />
+              {enregistrer.isPending ? 'Envoi…' : logo ? 'Changer le logo' : 'Ajouter un logo'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                disabled={enregistrer.isPending}
+                onChange={(e) => {
+                  void choisir(e.target.files?.[0])
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            {logo && (
+              <button type="button" onClick={() => enregistrer.mutate(null)} className="text-xs font-semibold text-destructive hover:underline">
+                Retirer
+              </button>
+            )}
+          </div>
+        )}
+        {message && <p className="mt-1 text-xs text-destructive">{message}</p>}
       </div>
     </div>
   )
