@@ -180,32 +180,6 @@ export function ReglesPedagogiquesPanel({
                   disciplines différentes par jour
                 </label>
               )}
-              {config.actif && regle.key === 'epsAuxBords' && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground">
-                  Matière
-                  <select
-                    value={regles.epsAuxBords.matiere}
-                    onChange={(e) => patch('epsAuxBords', { matiere: e.target.value })}
-                    className="rounded-md border border-border bg-card px-2 py-1 text-sm"
-                  >
-                    {DISCIPLINES.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                  en une séance de
-                  <input
-                    type="number"
-                    min={1}
-                    max={4}
-                    defaultValue={regles.epsAuxBords.duree}
-                    onBlur={(e) => patch('epsAuxBords', { duree: Math.min(4, Math.max(1, parseInt(e.target.value, 10) || 2)) })}
-                    className="w-14 rounded-md border border-border bg-card px-2 py-1 text-center text-sm"
-                  />
-                  créneaux
-                </div>
-              )}
             </div>
             <Toggle checked={config.actif} onChange={(actif) => patch(regle.key, { actif } as never)} />
           </div>

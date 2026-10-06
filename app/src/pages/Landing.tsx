@@ -200,7 +200,7 @@ const ONGLETS: { cle: string; titre: string; accroche: string; texte: string; po
     cle: 'classe',
     titre: 'Classe',
     accroche: 'Chaque classe, sa semaine complète',
-    texte: "Toutes les heures de la grille officielle, réparties selon vos règles : pas deux sciences d'affilée, EPS en début ou fin de journée, mercredi après-midi libre.",
+    texte: "Toutes les heures de la grille officielle, réparties selon vos règles : pas deux sciences d'affilée, une seule séance par discipline et par jour, mercredi après-midi libre.",
     points: ['Professeur principal en en-tête', 'Salle attitrée ou spécialisée', 'Groupes LV2 en parallèle'],
     apercu: (
       <ApercuLignes
@@ -218,7 +218,7 @@ const ONGLETS: { cle: string; titre: string; accroche: string; texte: string; po
     cle: 'professeur',
     titre: 'Professeur',
     accroche: 'Un service lisible pour chaque enseignant',
-    texte: "Jamais deux classes à la fois, ses indisponibilités respectées, une demi-journée libre préservée. Glissez une heure pour la déplacer : Planex vérifie tout avant d'accepter.",
+    texte: "Jamais deux classes à la fois, ses indisponibilités respectées. Glissez une heure pour la déplacer : Planex vérifie tout avant d'accepter.",
     points: ['Indisponibilités déclarées', 'Heures par semaine calculées', 'Déplacement contrôlé et verrouillé'],
     apercu: (
       <div className="flex flex-col gap-1.5">
@@ -629,6 +629,12 @@ export function Landing() {
             </Link>
             <Link to="/signup" className="hover:text-foreground">
               Créer un compte
+            </Link>
+            <Link to="/confidentialite" className="hover:text-foreground">
+              Confidentialité
+            </Link>
+            <Link to="/conditions-utilisation" className="hover:text-foreground">
+              Conditions
             </Link>
           </div>
         </div>

@@ -21,17 +21,9 @@ export interface ReglesPedagogiques {
   uneSeanceParJour: { actif: boolean }
   // h. Au moins N disciplines différentes par journée de cours — vérifiée et signalée dans le rapport
   minDisciplinesParJour: { actif: boolean; minimum: number }
-  // i. EPS uniquement aux 2 premiers créneaux du matin ou aux 2 derniers de l'après-midi, en une séance
-  //    unique de `duree` créneaux par classe, sur une salle de type "sport" si l'établissement en a — stricte
-  epsAuxBords: { actif: boolean; matiere: string; duree: number }
-  // Heures creuses en fin de matinée ou l'après-midi, jamais coincées entre deux cours — souple
-  heuresCreusesBienPlacees: { actif: boolean }
   // Plusieurs professeurs d'une même matière dans une même classe (ex. LV2 Allemand / Espagnol) =
   // groupes en parallèle (tandem) au lieu de séances successives pour toute la classe
   tandemsAutomatiques: { actif: boolean }
-  // Chaque professeur garde au moins une demi-journée sans cours dans la semaine (hors après-midi
-  // banalisé) — souple
-  demiJourneeLibreProfesseur: { actif: boolean }
 }
 
 export const MATIERES_LANGUES_DEFAUT = ['Français', 'Anglais', 'L.V.2 (All./Esp.)']
@@ -43,10 +35,7 @@ export const REGLES_DEFAUT: ReglesPedagogiques = {
   eviterCoupurePause: { actif: true, autoriserException: true },
   uneSeanceParJour: { actif: true },
   minDisciplinesParJour: { actif: true, minimum: 3 },
-  epsAuxBords: { actif: true, matiere: 'E.P.S.', duree: 2 },
-  heuresCreusesBienPlacees: { actif: true },
   tandemsAutomatiques: { actif: true },
-  demiJourneeLibreProfesseur: { actif: true },
 }
 
 // Fusionne ce qui est enregistré en base (éventuellement partiel ou ancien) avec les valeurs par défaut.
@@ -104,31 +93,10 @@ export const REGLES_DESCRIPTIONS: RegleDescription[] = [
     nature: 'contrôle',
   },
   {
-    key: 'epsAuxBords',
-    titre: 'EPS en début de matinée ou fin d’après-midi',
-    description:
-      "Exclusivement aux 2 premiers créneaux du matin ou aux 2 derniers de l'après-midi, en une séance unique par classe, sur le terrain (salle de type « Sport » si définie).",
-    nature: 'stricte',
-  },
-  {
-    key: 'heuresCreusesBienPlacees',
-    titre: 'Heures creuses en fin de matinée ou l’après-midi',
-    description:
-      "Les heures creuses inévitables sont placées en fin de matinée ou l'après-midi, jamais coincées entre deux cours ni de part et d'autre d'une discipline.",
-    nature: 'souple',
-  },
-  {
     key: 'tandemsAutomatiques',
     titre: 'Groupes en parallèle (tandem) automatiques',
     description:
       "Quand plusieurs professeurs enseignent la même matière à une même classe (ex. LV2 Allemand / Espagnol), leurs groupes ont cours en même temps dans des salles différentes.",
     nature: 'stricte',
-  },
-  {
-    key: 'demiJourneeLibreProfesseur',
-    titre: 'Une demi-journée libre par professeur',
-    description:
-      "Chaque professeur garde au moins une matinée ou un après-midi sans cours dans la semaine (l'après-midi banalisé ne compte pas).",
-    nature: 'souple',
   },
 ]

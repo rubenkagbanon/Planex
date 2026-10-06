@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ChampMotDePasse } from '@/components/ChampMotDePasse'
 import { PlanexLogo } from '@/components/PlanexLogo'
+import { BoutonGoogle } from '@/components/BoutonGoogle'
 import { traduireErreurAuth } from '@/lib/authErreurs'
 
 export function Login() {
@@ -37,6 +38,7 @@ export function Login() {
       <div className="w-full max-w-sm">
         <h1 className="mb-1 text-center text-xl font-semibold text-foreground">Connexion</h1>
         <p className="mb-8 text-center text-sm text-muted-foreground">Accède à ton espace emploi du temps</p>
+        <BoutonGoogle />
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Email</Label>

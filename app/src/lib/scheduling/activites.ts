@@ -25,8 +25,6 @@ export interface Activite {
   blocks: number[]
   requiredPeriods: number
   autoConsecutiveSplittable: boolean
-  // Règle "EPS aux bords" applicable (placement uniquement aux 2 premiers / 2 derniers créneaux)
-  bordsDeJournee: boolean
 }
 
 export interface RegroupementInput {
@@ -62,7 +60,7 @@ export function soustraireSeances(blocks: number[], quantite: number): number[] 
   return result.filter((b) => b > 0)
 }
 
-function toActivite(charge: Charge, bordsDeJournee: boolean): Activite {
+function toActivite(charge: Charge): Activite {
   return {
     id: `simple|${charge.professeurId}|${charge.niveau}|${charge.section}`,
     type: 'simple',
@@ -72,7 +70,6 @@ function toActivite(charge: Charge, bordsDeJournee: boolean): Activite {
     blocks: [...charge.blocks],
     requiredPeriods: charge.requiredPeriods,
     autoConsecutiveSplittable: charge.autoConsecutiveSplittable,
-    bordsDeJournee,
   }
 }
 
@@ -80,21 +77,7 @@ export function buildActivites(input: BuildActivitesInput): { activites: Activit
   const { regroupements, reglesByCycle } = input
   const warnings: string[] = []
 
-  // Règle "EPS aux bords" : une séance unique de `duree` créneaux par classe, quelle que soit la grille.
-  let charges = input.charges.map((charge) => {
-    const eps = reglesByCycle[charge.cycle]?.epsAuxBords
-    if (eps?.actif && charge.matiere === eps.matiere) {
-      const duree = Math.max(1, eps.duree)
-      return { ...charge, blocks: [duree], requiredPeriods: duree, autoConsecutiveSplittable: false }
-    }
-    return charge
-  })
-
-  const estBords = (charge: Pick<Charge, 'cycle' | 'matiere'>) => {
-    const eps = reglesByCycle[charge.cycle]?.epsAuxBords
-    return !!eps?.actif && charge.matiere === eps.matiere
-  }
-
+  let charges = input.charges
   const activites: Activite[] = []
   const consommees = new Set<Charge>()
 
@@ -134,7 +117,6 @@ export function buildActivites(input: BuildActivitesInput): { activites: Activit
         blocks: [...reference.blocks],
         requiredPeriods: reference.requiredPeriods,
         autoConsecutiveSplittable: reference.autoConsecutiveSplittable,
-        bordsDeJournee: estBords(reference),
       })
     }
     const restantes = regroupement.classes.filter(
@@ -174,7 +156,6 @@ export function buildActivites(input: BuildActivitesInput): { activites: Activit
         blocks: [...reference.blocks],
         requiredPeriods: reference.requiredPeriods,
         autoConsecutiveSplittable: false,
-        bordsDeJournee: membres.some(estBords),
       })
       for (const charge of membres) {
         const reste = soustraireSeances(charge.blocks, reference.requiredPeriods)
@@ -200,7 +181,7 @@ export function buildActivites(input: BuildActivitesInput): { activites: Activit
     if (groupe.length < 2 || professeurs.size < 2 || !tandemActif) {
       for (const charge of groupe) {
         consommees.add(charge)
-        activites.push(toActivite(charge, estBords(charge)))
+        activites.push(toActivite(charge))
       }
       continue
     }
@@ -219,7 +200,6 @@ export function buildActivites(input: BuildActivitesInput): { activites: Activit
       blocks: [...reference.blocks],
       requiredPeriods: reference.requiredPeriods,
       autoConsecutiveSplittable: reference.autoConsecutiveSplittable,
-      bordsDeJournee: estBords(reference),
     })
   }
 

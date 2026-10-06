@@ -1,38 +1,48 @@
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/context/AuthContext'
+import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ChampMotDePasse } from '@/components/ChampMotDePasse'
-import { traduireErreurAuth } from '@/lib/authErreurs'
 import { PlanexLogo } from '@/components/PlanexLogo'
-import { BoutonGoogle } from '@/components/BoutonGoogle'
+import { traduireErreurAuth } from '@/lib/authErreurs'
 import { cn } from '@/lib/utils'
 
 type Mode = 'creer' | 'rejoindre'
 
-export function Signup() {
-  const { signUp } = useAuth()
+// Étape obligatoire pour un compte sans établissement (inscription avec Google, ou membre retiré de son
+// établissement) : on y crée un nouvel établissement ou on en rejoint un avec un code d'invitation.
+export function CompleterProfil() {
+  const { user, signOut } = useAuth()
+  const { data: profile, isLoading } = useProfile()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>('creer')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [etablissement, setEtablissement] = useState('')
   const [codeInvitation, setCodeInvitation] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Pré-remplit le prénom et le nom transmis par Google
+  useEffect(() => {
+    if (!profile) return
+    setFirstName((v) => v || profile.first_name || '')
+    setLastName((v) => v || profile.last_name || '')
+  }, [profile])
+
+  if (isLoading) return null
+  if (profile?.etablissement_id) return <Navigate to="/accueil" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setSubmitting(true)
     try {
-      // Vérifications préalables : la base refuse de toute façon ces cas, mais Supabase Auth ne renverrait
-      // qu'un message générique ("Database error saving new user").
       if (mode === 'rejoindre') {
         const { data: nom, error: rpcError } = await supabase.rpc('verifier_code_invitation', { p_code: codeInvitation })
         if (rpcError) throw rpcError
@@ -45,55 +55,38 @@ export function Signup() {
         if (rpcError) throw rpcError
         if (!disponible) {
           setError(
-            "Cet établissement existe déjà sur Planex. Pour le rejoindre, demande un code d'invitation à son administrateur et choisis « Rejoindre un établissement ».",
+            "Cet établissement existe déjà sur Planex. Pour le rejoindre, demande un code d'invitation à son administrateur et choisis « Rejoindre avec un code ».",
           )
           return
         }
       }
 
-      const { error: signUpError } = await signUp(
-        email,
-        password,
-        mode === 'rejoindre' ? { firstName, lastName, codeInvitation } : { firstName, lastName, etablissement },
+      const { error: rpcError } = await supabase.rpc(
+        'completer_inscription',
+        mode === 'rejoindre'
+          ? { p_first_name: firstName, p_last_name: lastName, p_code_invitation: codeInvitation }
+          : { p_first_name: firstName, p_last_name: lastName, p_etablissement: etablissement },
       )
-      if (signUpError) {
-        setError(traduireErreurAuth(signUpError))
-        return
-      }
-      setSubmitted(true)
+      if (rpcError) throw rpcError
+      await queryClient.invalidateQueries({ queryKey: ['profile'] })
+      navigate('/accueil', { replace: true })
     } catch (err) {
-      setError(traduireErreurAuth(err instanceof Error ? err : { message: "Échec de l'inscription." }))
+      setError(traduireErreurAuth(err instanceof Error ? err : (err as { message?: string })))
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (submitted) {
-    return (
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-6 py-12">
-        <Link to="/" className="mb-10">
-          <PlanexLogo size={30} />
-        </Link>
-        <div className="w-full max-w-sm text-center">
-          <h1 className="mb-1 text-xl font-semibold text-foreground">Vérifie ta boîte mail</h1>
-          <p className="mb-8 text-sm text-muted-foreground">Un email de confirmation a été envoyé à {email}.</p>
-          <Link to="/login" className="text-sm font-semibold text-primary">
-            Retour à la connexion
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-6 py-12">
-      <Link to="/" className="mb-10">
+      <div className="mb-10">
         <PlanexLogo size={30} />
-      </Link>
+      </div>
       <div className="w-full max-w-sm">
-        <h1 className="mb-6 text-center text-xl font-semibold text-foreground">Créer un compte Planex</h1>
-
-        <BoutonGoogle />
+        <h1 className="mb-1 text-center text-xl font-semibold text-foreground">Compléter ton profil</h1>
+        <p className="mb-6 text-center text-sm text-muted-foreground">
+          Dernière étape avant d'accéder à Planex{user?.email ? ` avec ${user.email}` : ''}.
+        </p>
 
         <div className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-border bg-card p-1">
           {(
@@ -164,32 +157,17 @@ export function Signup() {
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Mot de passe</Label>
-            <ChampMotDePasse
-              id="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-            />
-            <p className="text-xs text-muted-foreground">Au moins 8 caractères.</p>
-          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={submitting} className="mt-2">
-            {submitting ? 'Création...' : 'Créer le compte'}
+            {submitting ? 'Enregistrement...' : 'Continuer'}
           </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Déjà un compte ?{' '}
-            <Link to="/login" className="font-semibold text-primary">
-              Se connecter
-            </Link>
-          </p>
+          <button
+            type="button"
+            onClick={() => signOut()}
+            className="text-center text-sm text-muted-foreground hover:text-foreground"
+          >
+            Se déconnecter
+          </button>
         </form>
       </div>
     </div>

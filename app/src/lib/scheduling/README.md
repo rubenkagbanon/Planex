@@ -160,14 +160,6 @@ Ces deux premières règles sont *aussi* garanties au niveau base par deux contr
   tendance à se tasser en début de matinée/après-midi, laissant les heures creuses éventuelles en fin de
   segment plutôt qu'au milieu. C'est un effet de construction, pas une garantie stricte : un professeur
   déjà occupé ailleurs peut encore forcer un trou au milieu d'une journée pour une classe donnée.
-- **E.P.S. aux bords de journée** : pour cette matière spécifiquement, le solveur essaie en priorité les 2
-  premiers créneaux de la matinée ou les 2 derniers de l'après-midi (`preferBoundaries` dans
-  `findConsecutiveRun`) avant les positions intermédiaires. Activé sur une partie des tentatives
-  seulement (`epsPreferBoundariesThisAttempt`, ~60 %) — pour un professeur qui couvre beaucoup de classes,
-  cette préférence peut entrer en compétition avec elle-même (toutes ses classes veulent les mêmes 4
-  créneaux "au bord" par jour) ; `solve()` choisit ensuite, parmi toutes les tentatives, celle qui place
-  le plus de séances (jamais moins pour gagner en confort E.P.S.), puis à égalité celle qui respecte le
-  plus cette préférence.
 
 ### Algorithme
 

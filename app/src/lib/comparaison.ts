@@ -1,6 +1,6 @@
 import type { Cycle } from '@/lib/cycle'
 import type { ReglesPedagogiques } from '@/lib/regles'
-import { analyserDemiJourneesProfesseurs, analyserEntorses, type Entorse } from '@/lib/scheduling/entorses'
+import { analyserEntorses, type Entorse } from '@/lib/scheduling/entorses'
 import { normalizeProfesseurNom } from '@/lib/scheduling/solver'
 import type { Slot } from '@/lib/scheduling/slots'
 
@@ -87,14 +87,11 @@ export function mesurer(
     }
   }
 
-  const entorses = [
-    ...analyserEntorses(
-      seances.map((s) => ({ niveau: s.niveau, section: s.section, matiere: s.matiere, cycle: s.cycle, jour: s.jour, creneauId: s.creneauId })),
-      slotsByJourByCycle,
-      reglesByCycle,
-    ),
-    ...analyserDemiJourneesProfesseurs(seances, slotsByJourByCycle, reglesByCycle),
-  ]
+  const entorses = analyserEntorses(
+    seances.map((s) => ({ niveau: s.niveau, section: s.section, matiere: s.matiere, cycle: s.cycle, jour: s.jour, creneauId: s.creneauId })),
+    slotsByJourByCycle,
+    reglesByCycle,
+  )
 
   // Découpage : séquences de créneaux consécutifs d'une même matière, par classe et par jour
   const casesParCle = new Map<string, Set<number>>()

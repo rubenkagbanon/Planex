@@ -2,14 +2,7 @@ import type { Cycle } from '@/lib/cycle'
 import { REGLES_DEFAUT, type ReglesPedagogiques } from '@/lib/regles'
 import type { Activite } from './activites'
 import { seSuivent, type Slot } from './slots'
-import {
-  analyserDemiJourneesProfesseurs,
-  analyserEntorses,
-  demiJourneesDeCours,
-  groupSlotsByJour,
-  penaliteEntorses,
-  type Entorse,
-} from './entorses'
+import { analyserEntorses, groupSlotsByJour, penaliteEntorses, type Entorse } from './entorses'
 
 export interface Seance {
   professeurId: string
@@ -99,8 +92,8 @@ const classeCode = (niveau: string, section: number) => `${niveau}-${section}`
 // 0 — toutes les règles (souples comprises) et aucune séance coupée par une pause
 // 1 — règles souples relâchées, toujours aucune coupure par une pause
 // 2 — coupure par une pause autorisée (seulement si la règle le permet "exceptionnellement")
-// 3 — dernier recours : la grille horaire de référence passe avant les règles pédagogiques. L'EPS peut
-//     sortir du début de matinée / fin d'après-midi, un cours peut être coupé par une pause, une matière
+// 3 — dernier recours : la grille horaire de référence passe avant les règles pédagogiques. Un cours peut
+//     être coupé par une pause, une matière
 //     qui exige une salle spécialisée est placée sans salle si aucune n'est libre. Chaque écart est relevé
 //     par l'analyse des entorses (rapport de génération).
 // Les contraintes physiques (un professeur, une classe, une salle à la fois ; indisponibilités) ne sont
@@ -124,8 +117,6 @@ interface Context {
   typeSalleParMatiere: Record<string, string>
   salleAttitreeParClasse: Record<string, string>
   seancesFixes: SeanceFixe[]
-  // Nombre de demi-journées de cours dans la semaine (règle "demi-journée libre par professeur")
-  nbDemiJournees: number
 }
 
 function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt {
@@ -139,14 +130,6 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
   const matieresParCase = new Map<string, Set<string>>()
   const dayLoadActivite = new Map<string, number>()
   const dayLoadClasse = new Map<string, number>()
-  // Demi-journées où chaque professeur (nom normalisé) a déjà cours
-  const demiJourneesProf = new Map<string, Set<string>>()
-  const demiJournee = (slot: Slot) => `${slot.jour}|${slot.apresMidi ? 'apres-midi' : 'matin'}`
-  const noterDemiJournee = (professeurNom: string, slot: Slot) => {
-    const key = normalizeProfesseurNom(professeurNom)
-    demiJourneesProf.set(key, (demiJourneesProf.get(key) ?? new Set<string>()).add(demiJournee(slot)))
-  }
-
   const classeSlotKey = (code: string, jour: string, creneauId: string) => `${code}|${jour}|${creneauId}`
   const salleKey = (salleId: string, slot: Slot) => `${salleId}|${slot.jour}|${slot.heureDebut}-${slot.heureFin}`
   const caseKey = (code: string, jour: string, index: number) => `${code}|${jour}|${index}`
@@ -163,7 +146,6 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     occupiedClasse.add(classeSlotKey(code, fixe.jour, fixe.creneauId))
     if (slot) {
       occupiedProf.add(profTimeKey(fixe.professeurNom, fixe.jour, slot.heureDebut, slot.heureFin))
-      noterDemiJournee(fixe.professeurNom, slot)
       if (fixe.salleId) {
         const usageId = `${fixe.salleId}|${fixe.groupeKey ?? `${code}|${fixe.professeurId}`}|${fixe.jour}|${fixe.creneauId}`
         if (!salleGroupesVus.has(usageId)) {
@@ -178,10 +160,9 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     }
   }
 
-  // Les activités les plus contraintes d'abord : EPS (créneaux imposés), puis regroupements (plusieurs
-  // professeurs ou classes à libérer en même temps), puis les plus gros volumes.
-  const difficulte = (a: Activite) =>
-    (a.bordsDeJournee ? 10_000 : 0) + a.requiredPeriods * (a.groupes.length + a.classes.length) * 10 + Math.max(...a.blocks, 0)
+  // Les activités les plus contraintes d'abord : regroupements (plusieurs professeurs ou classes à libérer
+  // en même temps), puis les plus gros volumes.
+  const difficulte = (a: Activite) => a.requiredPeriods * (a.groupes.length + a.classes.length) * 10 + Math.max(...a.blocks, 0)
   const ordered = shuffle(activites, rand).sort((a, b) => difficulte(b) - difficulte(a))
 
   // Choisit la salle de chaque groupe pour un enchaînement de créneaux. Renvoie null si une salle
@@ -190,15 +171,11 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     const tentatives = new Map<string, number>()
     const usage = (salleId: string, slot: Slot) => (salleUsage.get(salleKey(salleId, slot)) ?? 0) + (tentatives.get(salleKey(salleId, slot)) ?? 0)
     const libre = (salle: SalleInput) => run.every((slot) => usage(salle.id, slot) < salle.capacite)
-    const regles = reglesByCycle[activite.cycle]
 
     const result: (string | null)[] = []
     for (let gi = 0; gi < activite.groupes.length; gi++) {
       const groupe = activite.groupes[gi]
-      let typeExige = ctx.typeSalleParMatiere[groupe.matiere]
-      if (!typeExige && regles.epsAuxBords.actif && groupe.matiere === regles.epsAuxBords.matiere && ctx.sallesParType.has('sport')) {
-        typeExige = 'sport'
-      }
+      const typeExige = ctx.typeSalleParMatiere[groupe.matiere]
       const sallesDuType = typeExige ? ctx.sallesParType.get(typeExige) ?? [] : []
       const premiereClasse = activite.classes[0]
       const attitreeId = ctx.salleAttitreeParClasse[classeCode(premiereClasse.niveau, premiereClasse.section)]
@@ -247,19 +224,11 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     return true
   }
 
-  // Règles souples vérifiées au niveau 0 uniquement : enchaînements e/f, une séance par jour (h) et
-  // demi-journée libre des professeurs.
+  // Règles souples vérifiées au niveau 0 uniquement : enchaînements e/f et une séance par jour (h).
   function respecteReglesSouples(activite: Activite, daySlots: Slot[], start: number, size: number): boolean {
     const regles = reglesByCycle[activite.cycle]
     const matieres = activite.groupes.map((g) => g.matiere)
     const jour = daySlots[start].jour
-    if (regles.demiJourneeLibreProfesseur?.actif && ctx.nbDemiJournees > 1) {
-      const nouvelles = daySlots.slice(start, start + size).map(demiJournee)
-      for (const groupe of activite.groupes) {
-        const deja = demiJourneesProf.get(normalizeProfesseurNom(groupe.professeurNom)) ?? new Set<string>()
-        if (new Set([...deja, ...nouvelles]).size >= ctx.nbDemiJournees) return false
-      }
-    }
     for (const classe of activite.classes) {
       const code = classeCode(classe.niveau, classe.section)
       if (regles.uneSeanceParJour.actif) {
@@ -285,20 +254,6 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     return true
   }
 
-  function positionsCandidates(activite: Activite, daySlots: Slot[], size: number, dernierRecours: boolean): number[] {
-    const maxStart = daySlots.length - size
-    if (maxStart < 0) return []
-    if (activite.bordsDeJournee && !dernierRecours) {
-      // EPS : uniquement les `size` premiers créneaux du matin, ou les `size` derniers de l'après-midi.
-      const positions: number[] = []
-      if (daySlots.slice(0, size).every((s) => !s.apresMidi)) positions.push(0)
-      if (maxStart > 0 && daySlots.slice(maxStart).every((s) => s.apresMidi)) positions.push(maxStart)
-      return positions
-    }
-    // Du matin vers le soir : les heures creuses se retrouvent naturellement en fin de journée.
-    return Array.from({ length: maxStart + 1 }, (_, i) => i)
-  }
-
   function findPlacement(activite: Activite, size: number, niveau: Niveau): { run: Slot[]; jour: string; salles: (string | null)[] } | null {
     const regles = reglesByCycle[activite.cycle]
     const slotsByJour = slotsByJourByCycle[activite.cycle] ?? new Map<string, Slot[]>()
@@ -312,48 +267,20 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     })
 
     const coupureInterdite = regles.eviterCoupurePause.actif && niveau < 3 && (niveau < 2 || !regles.eviterCoupurePause.autoriserException)
-    const compacter = regles.heuresCreusesBienPlacees.actif
 
-    // Sans la règle "heures creuses", premier placement valide (jour le moins chargé d'abord). Avec la
-    // règle, on garde le placement qui laisse le moins d'heures creuses mal placées dans la journée des
-    // classes concernées (arrêt immédiat dès qu'un placement n'en crée aucune).
-    let meilleur: { run: Slot[]; jour: string; salles: (string | null)[]; cout: number } | null = null
+    // Premier placement valide : jour le moins chargé d'abord, puis du matin vers le soir.
     for (const jour of jours) {
       const daySlots = slotsByJour.get(jour) ?? []
-      for (const start of positionsCandidates(activite, daySlots, size, niveau === 3)) {
+      for (let start = 0; start + size <= daySlots.length; start++) {
         const run = daySlots.slice(start, start + size)
         if (!run.every((slot) => slotLibre(activite, slot))) continue
         if (coupureInterdite && run.some((slot, i) => i > 0 && !seSuivent(run[i - 1], slot))) continue
         if (niveau === 0 && !respecteReglesSouples(activite, daySlots, start, size)) continue
-        const cout = compacter ? coutHeuresCreuses(activite, daySlots, start, size) : 0
-        if (meilleur && cout >= meilleur.cout) continue
         const salles = choisirSalles(activite, run, niveau === 3)
-        if (!salles) continue
-        meilleur = { run, jour, salles, cout }
-        if (cout === 0) return meilleur
+        if (salles) return { run, jour, salles }
       }
     }
-    return meilleur
-  }
-
-  // Heures creuses que laisserait ce placement dans la journée de chaque classe : le matin, tout trou
-  // avant le dernier cours (les heures creuses n'y sont admises qu'en fin de matinée) ; l'après-midi, tout
-  // trou entre deux cours.
-  function coutHeuresCreuses(activite: Activite, daySlots: Slot[], start: number, size: number): number {
-    const jour = daySlots[start].jour
-    let cout = 0
-    for (const classe of activite.classes) {
-      const code = classeCode(classe.niveau, classe.section)
-      const occupe = (i: number) => (i >= start && i < start + size) || matieresParCase.has(caseKey(code, jour, i))
-      for (const apresMidi of [false, true]) {
-        const indexes = daySlots.map((s, i) => ({ s, i })).filter(({ s }) => s.apresMidi === apresMidi).map(({ i }) => i)
-        const occupes = indexes.filter(occupe)
-        if (occupes.length === 0) continue
-        const debut = apresMidi ? occupes[0] : indexes[0]
-        for (let i = debut; i <= occupes[occupes.length - 1]; i++) if (!occupe(i)) cout++
-      }
-    }
-    return cout
+    return null
   }
 
   function commit(activite: Activite, run: Slot[], jour: string, salles: (string | null)[]) {
@@ -363,7 +290,6 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
       const groupeKey = partagee ? `${activite.id}|${slot.jour}|${slot.creneauId}` : null
       for (const groupe of activite.groupes) {
         occupiedProf.add(profTimeKey(groupe.professeurNom, slot.jour, slot.heureDebut, slot.heureFin))
-        noterDemiJournee(groupe.professeurNom, slot)
       }
       salles.forEach((salleId) => {
         if (salleId) salleUsage.set(salleKey(salleId, slot), (salleUsage.get(salleKey(salleId, slot)) ?? 0) + 1)
@@ -434,17 +360,7 @@ function runAttempt(activites: Activite[], ctx: Context, seed: number): Attempt 
     ...ctx.seancesFixes.map((f) => ({ niveau: f.niveau, section: f.section, matiere: f.matiere, cycle: f.cycle, jour: f.jour, creneauId: f.creneauId })),
     ...seances,
   ]
-  const nomParId = new Map<string, string>()
-  for (const fixe of ctx.seancesFixes) nomParId.set(fixe.professeurId, fixe.professeurNom)
-  for (const activite of activites) for (const g of activite.groupes) nomParId.set(g.professeurId, g.professeurNom)
-  const entorses = [
-    ...analyserEntorses(toutes, slotsByJourByCycle, reglesByCycle),
-    ...analyserDemiJourneesProfesseurs(
-      [...ctx.seancesFixes, ...seances].map((s) => ({ professeur: nomParId.get(s.professeurId) ?? s.professeurId, cycle: s.cycle, jour: s.jour, creneauId: s.creneauId })),
-      slotsByJourByCycle,
-      reglesByCycle,
-    ),
-  ]
+  const entorses = analyserEntorses(toutes, slotsByJourByCycle, reglesByCycle)
   return { seances, unplaced, scindes, entorses, penalite: penaliteEntorses(entorses) + scindes.length * 8 }
 }
 
@@ -472,7 +388,6 @@ export function solve(
     typeSalleParMatiere: options.typeSalleParMatiere ?? {},
     salleAttitreeParClasse: options.salleAttitreeParClasse ?? {},
     seancesFixes: options.seancesFixes ?? [],
-    nbDemiJournees: demiJourneesDeCours(slotsByJourByCycle).size,
   }
 
   // Meilleure tentative : d'abord le moins de séances manquantes (jamais sacrifié), puis la plus petite

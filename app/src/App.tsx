@@ -11,6 +11,9 @@ import { Parametres } from '@/pages/Parametres'
 import { Impression } from '@/pages/Impression'
 import { VueEnsemble } from '@/pages/VueEnsemble'
 import { Bibliotheque } from '@/pages/Bibliotheque'
+import { Confidentialite } from '@/pages/Confidentialite'
+import { ConditionsUtilisation } from '@/pages/ConditionsUtilisation'
+import { CompleterProfil } from '@/pages/CompleterProfil'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { RedirectIfAuthed } from '@/components/RedirectIfAuthed'
 
@@ -51,6 +54,17 @@ function App() {
       />
       {/* Hors RedirectIfAuthed : le lien de l'email ouvre cette page avec une session temporaire */}
       <Route path="/reinitialiser-mot-de-passe" element={<ReinitialiserMotDePasse />} />
+      {/* Pages légales publiques, accessibles connecté ou non (exigées par l'écran de consentement Google) */}
+      <Route path="/confidentialite" element={<Confidentialite />} />
+      <Route path="/conditions-utilisation" element={<ConditionsUtilisation />} />
+      <Route
+        path="/completer-profil"
+        element={
+          <ProtectedRoute sansEtablissement>
+            <CompleterProfil />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/accueil"
         element={

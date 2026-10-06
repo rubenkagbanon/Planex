@@ -1,6 +1,6 @@
 import type { Cycle } from '@/lib/cycle'
 import type { ReglesPedagogiques } from '@/lib/regles'
-import { analyserDemiJourneesProfesseurs, analyserEntorses } from '@/lib/scheduling/entorses'
+import { analyserEntorses } from '@/lib/scheduling/entorses'
 import { seSuivent, type Slot } from '@/lib/scheduling/slots'
 import type { SeanceComparable } from '@/lib/comparaison'
 
@@ -57,7 +57,7 @@ export function apprendreModele(
   const result = {} as Record<Cycle, ModeleCycle | null>
   for (const cycle of ['college', 'lycee'] as Cycle[]) {
     const duCycle = seances.filter((s) => s.cycle === cycle)
-    result[cycle] = duCycle.length === 0 ? null : apprendreCycle(cycle, duCycle, seances, slotsByJourByCycle, reglesActuelles[cycle])
+    result[cycle] = duCycle.length === 0 ? null : apprendreCycle(cycle, duCycle, slotsByJourByCycle, reglesActuelles[cycle])
   }
   return result
 }
@@ -65,7 +65,6 @@ export function apprendreModele(
 function apprendreCycle(
   cycle: Cycle,
   seances: SeanceComparable[],
-  toutes: SeanceComparable[],
   slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>,
   actuelles: ReglesPedagogiques,
 ): ModeleCycle {
@@ -139,9 +138,6 @@ function apprendreCycle(
     eviterCoupurePause: { ...actuelles.eviterCoupurePause, actif: true },
     uneSeanceParJour: { actif: true },
     minDisciplinesParJour: { actif: true, minimum: 1 },
-    epsAuxBords: { ...actuelles.epsAuxBords, actif: true },
-    heuresCreusesBienPlacees: { actif: true },
-    demiJourneeLibreProfesseur: { actif: true },
   }
   const entorses = analyserEntorses(
     seances.map((s) => ({ niveau: s.niveau, section: s.section, matiere: s.matiere, cycle, jour: s.jour, creneauId: s.creneauId })),
@@ -218,46 +214,6 @@ function apprendreCycle(
     `Journées de ${distinctes[0] ?? 0} à ${distinctes[distinctes.length - 1] ?? 0} disciplines ; 90 % en comptent au moins ${p10}.`,
     { actif: true, minimum: Math.min(8, Math.max(1, p10)) },
     p10 < actuelles.minDisciplinesParJour.minimum,
-  )
-
-  // EPS
-  const eps = actuelles.epsAuxBords.matiere
-  const seqEps = sequences.filter((s) => s.matiere === eps)
-  if (seqEps.length > 0) {
-    const durees = new Map<number, number>()
-    for (const s of seqEps) durees.set(s.fin - s.debut + 1, (durees.get(s.fin - s.debut + 1) ?? 0) + 1)
-    const duree = [...durees].sort((a, b) => b[1] - a[1])[0][0]
-    const horsBords = nbEntorses('epsAuxBords')
-    const aux = 1 - horsBords / seqEps.length
-    const strict = aux >= 0.8
-    ajouter(
-      'epsAuxBords',
-      `${pct(aux)} des séances de ${eps} en début de matinée ou fin d'après-midi (${seqEps.length - horsBords}/${seqEps.length}), durée habituelle ${duree}h.`,
-      { ...actuelles.epsAuxBords, actif: strict, duree },
-      !strict,
-    )
-  }
-
-  // Heures creuses
-  const creuses = nbEntorses('heuresCreusesBienPlacees')
-  const creusesOk = creuses / Math.max(1, nbClasseJours) < 0.15
-  ajouter(
-    'heuresCreusesBienPlacees',
-    `${creuses} heure(s) creuse(s) mal placée(s) pour ${nbClasseJours} journées-classe (${pct(creuses / Math.max(1, nbClasseJours))}).`,
-    { actif: creusesOk },
-    !creusesOk,
-  )
-
-  // Demi-journée libre des professeurs (tous cycles confondus : un professeur peut enseigner aux deux)
-  const professeurs = new Set(toutes.map((s) => s.professeur.trim().toLocaleLowerCase('fr-FR')))
-  const sansDemiJournee = analyserDemiJourneesProfesseurs(toutes, slotsByJourByCycle, { college: toutActif, lycee: toutActif }).length
-  const avecDemiJournee = (professeurs.size - sansDemiJournee) / Math.max(1, professeurs.size)
-  const demiJourneeOk = avecDemiJournee >= 0.8
-  ajouter(
-    'demiJourneeLibreProfesseur',
-    `${professeurs.size - sansDemiJournee} professeurs sur ${professeurs.size} (${pct(avecDemiJournee)}) ont au moins une demi-journée libre.`,
-    { actif: demiJourneeOk },
-    !demiJourneeOk,
   )
 
   // Remarques hors règles

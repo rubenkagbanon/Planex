@@ -57,10 +57,9 @@ const SOURCE_PDF = 'pdf'
 const CYCLE_LABEL: Record<Cycle, string> = { college: 'Collège', lycee: 'Lycée' }
 
 function resumeSuggestion(c: Constat): string {
-  const s = c.suggestion as { actif: boolean; minimum?: number; duree?: number }
+  const s = c.suggestion as { actif: boolean; minimum?: number }
   if (!s.actif) return 'Désactiver'
   if (c.key === 'minDisciplinesParJour') return `Minimum ${s.minimum}`
-  if (c.key === 'epsAuxBords') return `Activer, séance de ${s.duree}h`
   return 'Activer'
 }
 
@@ -232,8 +231,8 @@ export function ApprentissageModele() {
       <div className="rounded-xl border border-border bg-card p-6">
         <h2 className="font-serif text-lg font-semibold text-foreground">Apprendre d'un emploi du temps existant</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Planex analyse un emploi du temps réel — comment chaque matière est découpée en séances, ce qui s'enchaîne,
-          où tombe l'EPS, les demi-journées libres des professeurs — et propose les réglages des règles pédagogiques
+          Planex analyse un emploi du temps réel — comment chaque matière est découpée en séances, ce qui s'enchaîne
+          — et propose les réglages des règles pédagogiques
           qui reproduisent ces habitudes pour les prochains emplois du temps. Rien n'est modifié tant que tu n'as pas
           cliqué sur « Appliquer ».
         </p>

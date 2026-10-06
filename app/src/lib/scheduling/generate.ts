@@ -177,39 +177,6 @@ export function generateEmploiDuTemps(input: GenerateInput): GenerateResult {
     ? [`Aucune salle de type ${typesManquants.join(', ')} : les matières qui en exigent une ont été placées sans salle.`]
     : []
 
-  // Règle EPS "aux bords" : chaque professeur ne dispose que d'un nombre limité de positions (2 premiers
-  // créneaux du matin, 2 derniers de l'après-midi). Au-delà, la règle est impossible à respecter : on
-  // l'explique plutôt que de laisser croire à un échec du moteur.
-  const capaciteWarnings: string[] = []
-  const bordsParProf = new Map<string, { nom: string; activites: number; cycles: Set<Cycle> }>()
-  for (const activite of activites.filter((a) => a.bordsDeJournee)) {
-    for (const groupe of activite.groupes) {
-      const key = normalizeProfesseurNom(groupe.professeurNom)
-      const entry = bordsParProf.get(key) ?? { nom: groupe.professeurNom, activites: 0, cycles: new Set<Cycle>() }
-      entry.activites += 1
-      entry.cycles.add(activite.cycle)
-      bordsParProf.set(key, entry)
-    }
-  }
-  for (const { nom, activites: nb, cycles } of bordsParProf.values()) {
-    const positions = new Set<string>()
-    for (const cycle of cycles) {
-      const duree = reglesByCycle[cycle].epsAuxBords.duree
-      const parJour = new Map<string, Slot[]>()
-      for (const s of slotsByCycle[cycle]) parJour.set(s.jour, [...(parJour.get(s.jour) ?? []), s])
-      for (const [jour, daySlots] of parJour) {
-        const tries = [...daySlots].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut))
-        if (tries.slice(0, duree).every((s) => !s.apresMidi) && tries.length >= duree) positions.add(`${jour}|matin`)
-        if (tries.length > duree && tries.slice(-duree).every((s) => s.apresMidi)) positions.add(`${jour}|soir`)
-      }
-    }
-    if (nb > positions.size) {
-      capaciteWarnings.push(
-        `${nom} a ${nb} séances d'EPS à placer mais seulement ${positions.size} positions « début de matinée / fin d'après-midi » par semaine : la grille horaire passant en premier, ${nb - positions.size} séance(s) sont placées ailleurs dans la journée (voir les entorses EPS). Pour l'éviter : déclare des troncs communs EPS (plusieurs classes ensemble sur le terrain).`,
-      )
-    }
-  }
-
   const scindesWarnings = scindes.map(
     (s) => `${activiteLabel(s.activite)} : un bloc de ${s.taille}h a été scindé en séances isolées, faute de ${s.taille} créneaux consécutifs libres.`,
   )
@@ -248,7 +215,7 @@ export function generateEmploiDuTemps(input: GenerateInput): GenerateResult {
 
   return {
     seances: seancesGenerees,
-    warnings: [...capaciteWarnings, ...chargeWarnings, ...activiteWarnings, ...noCreneauxWarnings, ...salleWarnings, ...unplacedWarnings, ...scindesWarnings, ...sansSalleWarnings],
+    warnings: [...chargeWarnings, ...activiteWarnings, ...noCreneauxWarnings, ...salleWarnings, ...unplacedWarnings, ...scindesWarnings, ...sansSalleWarnings],
     entorses,
     totalCharges,
     totalPlacees: totalCharges - manquantes - nonPlaceesFauteDeCreneaux,

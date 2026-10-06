@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { Undo2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/hooks/useProfile'
 import { useEmploiDuTempsData, type EmploiDuTempsData } from '@/hooks/useEmploiDuTempsData'
+import { useEditionSeances } from '@/hooks/useEditionSeances'
 import { AppHeader } from '@/components/AppHeader'
+import { Button } from '@/components/ui/button'
 import type { Cycle } from '@/lib/cycle'
 import { REGLES_DESCRIPTIONS, type ReglesPedagogiques } from '@/lib/regles'
 import { analyserEntorses, groupSlotsByJour, type Entorse } from '@/lib/scheduling/entorses'
@@ -17,6 +21,8 @@ import {
   formatHeure,
   joursActifs,
   seancesDeCase,
+  type GrilleLigne,
+  type SeanceRow,
 } from '@/lib/timetable'
 import { colorForMatiere } from '@/lib/matiereColor'
 import { cn } from '@/lib/utils'
@@ -30,65 +36,119 @@ function initiales(nom: string): string {
   return nom.split(/\s+/)[0] ?? nom
 }
 
-function GrilleClasses({ data, jour }: { data: EmploiDuTempsData; jour: string }) {
-  const cycles = (['college', 'lycee'] as Cycle[]).filter((cycle) => data.classeOptions.some((c) => c.cycle === cycle))
+interface CaseData {
+  classeKey: string
+  ligne: GrilleLigne
+}
+
+function CaseClasse({ id, caseData, contenu, data }: { id: string; caseData: CaseData; contenu: SeanceRow[]; data: EmploiDuTempsData }) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id, data: caseData })
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id, data: caseData, disabled: contenu.length === 0 })
+  const fond = contenu[0] ? colorForMatiere(contenu[0].matiere) : undefined
   return (
-    <div className="flex flex-col gap-8">
-      {cycles.map((cycle) => {
-        const lignes = construireLignes(data.creneaux, [cycle]).filter((l) => l.type === 'cours')
-        const classes = data.classeOptions.filter((c) => c.cycle === cycle)
-        return (
-          <div key={cycle}>
-            <h3 className="mb-2 font-serif text-lg font-semibold">{cycle === 'college' ? 'Collège' : 'Lycée'}</h3>
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full min-w-[800px] border-collapse text-[11px]">
-                <thead>
-                  <tr className="bg-secondary text-secondary-foreground">
-                    <th className="sticky left-0 bg-secondary px-2 py-1.5 text-left">Classe</th>
-                    {lignes.map((l) => (
-                      <th key={l.key} className="px-1 py-1.5 font-semibold">
-                        {formatHeure(l.heureDebut)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {classes.map((c) => {
-                    const seances = data.seances.filter((s) => s.niveau === c.niveau && s.section === c.section)
-                    return (
-                      <tr key={c.key} className="border-t border-border">
-                        <td className="sticky left-0 whitespace-nowrap bg-card px-2 py-1 font-semibold">{c.label}</td>
-                        {lignes.map((l) => {
-                          if (estVieScolaire(jour, l, data.contraintes, data.creneaux, [cycle])) {
-                            return <td key={l.key} className="border-l border-border bg-muted/40 text-center text-[9px] text-muted-foreground">VS</td>
-                          }
-                          const contenu = seancesDeCase(seances, jour, l)
-                          return (
-                            <td
-                              key={l.key}
-                              className="border-l border-border px-1 py-1 text-center"
-                              style={contenu[0] ? { backgroundColor: colorForMatiere(contenu[0].matiere) } : undefined}
-                              title={contenu.map((s) => `${s.matiere} — ${data.profNameById[s.professeur_id] ?? ''}`).join('\n')}
-                            >
-                              {contenu.length > 0 && (
-                                <>
-                                  <div className="font-semibold">{[...new Set(contenu.map((s) => abregerMatiere(s.matiere)))].join('/')}</div>
-                                  <div className="text-[9px] text-foreground/70">{contenu.map((s) => initiales(data.profNameById[s.professeur_id] ?? '')).join('/')}</div>
-                                </>
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+    <td
+      ref={setDropRef}
+      className={cn('border-l border-border p-0 text-center', isOver && 'outline outline-2 -outline-offset-2 outline-primary')}
+      style={fond ? { backgroundColor: fond } : undefined}
+      title={contenu.map((s) => `${s.matiere} — ${data.profNameById[s.professeur_id] ?? ''}`).join('\n')}
+    >
+      {contenu.length > 0 && (
+        <div
+          ref={setDragRef}
+          {...listeners}
+          {...attributes}
+          className={cn('cursor-grab px-1 py-1 active:cursor-grabbing', isDragging && 'relative z-20 rounded shadow-lg')}
+          style={{
+            ...(transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : {}),
+            ...(isDragging ? { backgroundColor: fond } : {}),
+          }}
+        >
+          <div className="font-semibold">{[...new Set(contenu.map((s) => abregerMatiere(s.matiere)))].join('/')}</div>
+          <div className="text-[9px] text-foreground/70">{contenu.map((s) => initiales(data.profNameById[s.professeur_id] ?? '')).join('/')}</div>
+        </div>
+      )}
+    </td>
+  )
+}
+
+function GrilleClasses({
+  data,
+  jour,
+  onDeplacer,
+  onRefus,
+}: {
+  data: EmploiDuTempsData
+  jour: string
+  onDeplacer: (classeKey: string, source: GrilleLigne, cible: GrilleLigne) => void
+  onRefus: (texte: string) => void
+}) {
+  const cycles = (['college', 'lycee'] as Cycle[]).filter((cycle) => data.classeOptions.some((c) => c.cycle === cycle))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+
+  function handleDragEnd(event: DragEndEvent) {
+    if (!event.over || event.active.id === event.over.id) return
+    const source = event.active.data.current as CaseData | undefined
+    const cible = event.over.data.current as CaseData | undefined
+    if (!source || !cible) return
+    if (source.classeKey !== cible.classeKey) {
+      onRefus('Une séance ne peut être déplacée que sur la ligne de sa propre classe.')
+      return
+    }
+    onDeplacer(source.classeKey, source.ligne, cible.ligne)
+  }
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div className="flex flex-col gap-8">
+        {cycles.map((cycle) => {
+          const lignes = construireLignes(data.creneaux, [cycle]).filter((l) => l.type === 'cours')
+          const classes = data.classeOptions.filter((c) => c.cycle === cycle)
+          return (
+            <div key={cycle}>
+              <h3 className="mb-2 font-serif text-lg font-semibold">{cycle === 'college' ? 'Collège' : 'Lycée'}</h3>
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full min-w-[800px] border-collapse text-[11px]">
+                  <thead>
+                    <tr className="bg-secondary text-secondary-foreground">
+                      <th className="sticky left-0 bg-secondary px-2 py-1.5 text-left">Classe</th>
+                      {lignes.map((l) => (
+                        <th key={l.key} className="px-1 py-1.5 font-semibold">
+                          {formatHeure(l.heureDebut)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classes.map((c) => {
+                      const seances = data.seances.filter((s) => s.niveau === c.niveau && s.section === c.section)
+                      return (
+                        <tr key={c.key} className="border-t border-border">
+                          <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-2 py-1 font-semibold">{c.label}</td>
+                          {lignes.map((l) => {
+                            if (estVieScolaire(jour, l, data.contraintes, data.creneaux, [cycle])) {
+                              return <td key={l.key} className="border-l border-border bg-muted/40 text-center text-[9px] text-muted-foreground">VS</td>
+                            }
+                            return (
+                              <CaseClasse
+                                key={l.key}
+                                id={`${c.key}::${l.key}`}
+                                caseData={{ classeKey: c.key, ligne: l }}
+                                contenu={seancesDeCase(seances, jour, l)}
+                                data={data}
+                              />
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+    </DndContext>
   )
 }
 
@@ -292,6 +352,23 @@ export function VueEnsemble() {
   const { grid } = useHorairesGrid(etablissementId)
   const [onglet, setOnglet] = useState<Onglet>('classes')
   const [jour, setJour] = useState('lundi')
+  const edition = useEditionSeances(data, etablissementId)
+
+  function deplacerClasse(classeKey: string, source: GrilleLigne, cible: GrilleLigne) {
+    const classe = data?.classeOptions.find((c) => c.key === classeKey)
+    if (!data || !classe) return
+    edition.deplacer(
+      {
+        type: 'classe',
+        label: classe.label,
+        filtre: (s) => s.niveau === classe.niveau && s.section === classe.section,
+        lignes: construireLignes(data.creneaux, [classe.cycle]),
+        enBloc: false,
+      },
+      { jour, ligne: source },
+      { jour, ligne: cible },
+    )
+  }
 
   const entorses = useMemo(() => {
     if (!data) return []
@@ -360,7 +437,10 @@ export function VueEnsemble() {
               <button
                 key={j.key}
                 type="button"
-                onClick={() => setJour(j.key)}
+                onClick={() => {
+                  setJour(j.key)
+                  edition.setMessage(null)
+                }}
                 className={cn(
                   'rounded-full border px-3 py-1 text-xs font-medium',
                   jour === j.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground',
@@ -372,7 +452,39 @@ export function VueEnsemble() {
           </div>
         )}
 
-        {data && onglet === 'classes' && <GrilleClasses data={data} jour={jour} />}
+        {data && onglet === 'classes' && (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Glisse une séance vers une autre case de la même classe pour la déplacer (ou l'échanger avec la séance qui s'y trouve). Chaque
+                modification est contrôlée (professeur, classe, salle, indisponibilités) puis verrouillée 🔒.
+              </p>
+              <Button size="sm" variant="outline" onClick={edition.annuler} disabled={edition.historique.length === 0 || edition.appliquerMutation.isPending}>
+                <Undo2 className="mr-1 h-3.5 w-3.5" /> Annuler le dernier déplacement
+              </Button>
+            </div>
+            {edition.message && (
+              <div
+                className={cn(
+                  'mb-4 rounded-lg border px-4 py-3 text-sm',
+                  edition.message.type === 'erreur' ? 'border-destructive text-destructive' : 'border-primary/50 bg-card text-foreground',
+                )}
+              >
+                {edition.message.lignes.map((l, i) => (
+                  <p key={i} className={i === 0 ? 'font-semibold' : 'text-xs'}>
+                    {i === 0 ? l : `• ${l}`}
+                  </p>
+                ))}
+              </div>
+            )}
+            <GrilleClasses
+              data={data}
+              jour={jour}
+              onDeplacer={deplacerClasse}
+              onRefus={(texte) => edition.setMessage({ type: 'erreur', lignes: [texte] })}
+            />
+          </>
+        )}
         {data && onglet === 'salles' && <GrilleSalles data={data} jour={jour} />}
         {data && onglet === 'controles' && <Controles entorses={entorses} />}
         {data && onglet === 'services' && <Services data={data} grid={grid} />}

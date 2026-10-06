@@ -88,8 +88,7 @@ describe('apprentissage du modèle de Bingerville', () => {
     expect(constat('college', 'pasEnchainerLangues').recommandee).toBe(false)
   })
 
-  it('relève la demi-journée libre des professeurs et le mercredi après-midi sans cours', () => {
-    expect((constat('college', 'demiJourneeLibreProfesseur').suggestion as { actif: boolean }).actif).toBe(true)
+  it('relève le mercredi après-midi sans cours', () => {
     expect(modele.college!.remarques[0]).toMatch(/Aucun cours le mercredi après-midi/)
   })
 

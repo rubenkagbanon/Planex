@@ -145,9 +145,6 @@ npm run test     # Vitest
   y est parfois lui-même scindé en "1+1" par nécessité. Seules les unités réellement impossibles à caser
   comptent alors comme non placées. Une cellule non décomposée valant autre chose que 2 garde le
   comportement d'avant (répartition libre)
-- **E.P.S. aux bords de journée** : le solveur essaie en priorité de placer les cours d'E.P.S. sur les 2
-  premiers créneaux de la matinée ou les 2 derniers de l'après-midi, sans jamais sacrifier de séances
-  placées pour l'obtenir (préférence best-effort, activée sur une partie des tentatives seulement)
 - **Heures creuses en fin de segment** : à l'intérieur d'une journée, les séances d'une classe sont placées
   en priorité du début vers la fin (effet de construction), ce qui tend à laisser les heures creuses en fin
   de matinée/après-midi plutôt qu'au milieu — best-effort, pas une garantie stricte

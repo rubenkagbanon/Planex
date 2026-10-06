@@ -40,6 +40,28 @@ function creneauDansCycle(creneauById: Map<string, CreneauRow>, creneauId: strin
   return null
 }
 
+export interface Mouvement {
+  contenu: SeanceRow[]
+  destination: { jour: string; creneauId: string }
+}
+
+// Envoie le contenu de plusieurs cases vers leurs destinations en une seule opération (séance de plusieurs
+// heures déplacée en bloc, avec les cases qu'elle libère et celles qu'elle occupe).
+export function calculerPermutation(seances: SeanceRow[], mouvements: Mouvement[], creneauById: Map<string, CreneauRow>): Deplacement[] | string {
+  const deplacements: Deplacement[] = []
+  const vus = new Set<string>()
+  for (const { contenu, destination } of mouvements) {
+    for (const s of seancesLiees(seances, contenu)) {
+      if (vus.has(s.id)) continue
+      vus.add(s.id)
+      const creneauId = creneauDansCycle(creneauById, destination.creneauId, s.cycle)
+      if (!creneauId) return "Ce créneau n'existe pas pour ce cycle."
+      deplacements.push({ id: s.id, jour: destination.jour, creneauId, salleId: s.salle_id, verrouille: true })
+    }
+  }
+  return deplacements
+}
+
 // Déplace le contenu d'une case (source) vers une autre (cible) ; si la cible est occupée par la même
 // classe, les deux contenus sont échangés.
 export function calculerEchange(
@@ -50,20 +72,14 @@ export function calculerEchange(
   origine: { jour: string; creneauId: string },
   creneauById: Map<string, CreneauRow>,
 ): Deplacement[] | string {
-  const aller = seancesLiees(seances, source)
-  const retour = seancesLiees(seances, cible)
-  const deplacements: Deplacement[] = []
-  for (const s of aller) {
-    const creneauId = creneauDansCycle(creneauById, destination.creneauId, s.cycle)
-    if (!creneauId) return "Ce créneau n'existe pas pour ce cycle."
-    deplacements.push({ id: s.id, jour: destination.jour, creneauId, salleId: s.salle_id, verrouille: true })
-  }
-  for (const s of retour) {
-    const creneauId = creneauDansCycle(creneauById, origine.creneauId, s.cycle)
-    if (!creneauId) return "Ce créneau n'existe pas pour ce cycle."
-    deplacements.push({ id: s.id, jour: origine.jour, creneauId, salleId: s.salle_id, verrouille: true })
-  }
-  return deplacements
+  return calculerPermutation(
+    seances,
+    [
+      { contenu: source, destination },
+      { contenu: cible, destination: origine },
+    ],
+    creneauById,
+  )
 }
 
 export function verifierDeplacements(seances: SeanceRow[], deplacements: Deplacement[], ctx: ContexteEdition): string[] {

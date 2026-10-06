@@ -694,6 +694,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      completer_inscription: {
+        Args: { p_first_name: string; p_last_name: string; p_etablissement?: string; p_code_invitation?: string }
+        Returns: undefined
+      }
       appliquer_deplacements: { Args: { p_deplacements: Json }; Returns: undefined }
       supprimer_donnees_etablissement: { Args: { p_avec_bibliotheque?: boolean }; Returns: undefined }
       cloturer_annee: {

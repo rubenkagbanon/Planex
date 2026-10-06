@@ -14,9 +14,6 @@ const REGLES_NEUTRES: ReglesPedagogiques = {
   eviterCoupurePause: { actif: false, autoriserException: true },
   uneSeanceParJour: { actif: false },
   minDisciplinesParJour: { actif: false, minimum: 3 },
-  epsAuxBords: { ...REGLES_DEFAUT.epsAuxBords, actif: false },
-  heuresCreusesBienPlacees: { actif: false },
-  demiJourneeLibreProfesseur: { actif: false },
 }
 const neutres = { college: REGLES_NEUTRES, lycee: REGLES_NEUTRES }
 
@@ -33,7 +30,6 @@ function activite(partial: Partial<Activite> & Pick<Activite, 'groupes'>): Activ
     blocks: [1],
     requiredPeriods: 1,
     autoConsecutiveSplittable: false,
-    bordsDeJournee: false,
     ...partial,
   }
 }
@@ -103,29 +99,6 @@ describe('blocs et pauses', () => {
 })
 
 describe('règles pédagogiques', () => {
-  it("EPS uniquement aux 2 premiers créneaux du matin ou aux 2 derniers de l'après-midi", () => {
-    const jour = [
-      slot('m1', '07:45:00', '08:35:00'),
-      slot('m2', '08:35:00', '09:25:00'),
-      slot('m3', '09:25:00', '10:15:00'),
-      slot('a1', '13:15:00', '14:05:00', 'lundi', true),
-      slot('a2', '14:05:00', '14:55:00', 'lundi', true),
-    ]
-    const regles = { ...REGLES_NEUTRES, epsAuxBords: { actif: true, matiere: 'E.P.S.', duree: 2 } }
-    // Le matin est déjà pris par une autre activité de la classe : l'EPS doit aller en fin d'après-midi.
-    const result = solve(
-      [
-        activite({ id: 'eps', groupes: [prof('sport', 'Signo', 'E.P.S.')], blocks: [2], requiredPeriods: 2, bordsDeJournee: true }),
-        activite({ id: 'maths', groupes: [prof('maths', 'Bamba')], blocks: [1], requiredPeriods: 1 }),
-      ],
-      { college: jour, lycee: [] },
-      { reglesByCycle: { college: regles, lycee: regles }, tentatives: 20 },
-    )
-    const eps = result.seances.filter((s) => s.matiere === 'E.P.S.').map((s) => s.creneauId).sort()
-    expect([['m1', 'm2'], ['a1', 'a2']]).toContainEqual(eps)
-    expect(result.unplaced).toHaveLength(0)
-  })
-
   it("évite d'enchaîner deux langues", () => {
     const jour = [slot('s1', '08:00:00', '09:00:00'), slot('s2', '09:00:00', '10:00:00'), slot('s3', '10:00:00', '11:00:00')]
     const regles = { ...REGLES_NEUTRES, pasEnchainerLangues: { actif: true, matieres: ['Français', 'Anglais'] } }
@@ -143,9 +116,9 @@ describe('règles pédagogiques', () => {
     expect(result.entorses.filter((e) => e.regle === 'pasEnchainerLangues')).toHaveLength(0)
   })
 
-  it("signale une journée avec trop peu de disciplines et une heure creuse en milieu de matinée", () => {
+  it('signale une journée avec trop peu de disciplines', () => {
     const jour = [slot('s1', '08:00:00', '09:00:00'), slot('s2', '09:00:00', '10:00:00'), slot('s3', '10:00:00', '11:00:00')]
-    const regles = { ...REGLES_NEUTRES, minDisciplinesParJour: { actif: true, minimum: 3 }, heuresCreusesBienPlacees: { actif: true } }
+    const regles = { ...REGLES_NEUTRES, minDisciplinesParJour: { actif: true, minimum: 3 } }
     const entorses = analyserEntorses(
       [
         { niveau: '3e', section: 1, matiere: 'Français', cycle: 'college', jour: 'lundi', creneauId: 's1' },
@@ -154,7 +127,7 @@ describe('règles pédagogiques', () => {
       { college: groupSlotsByJour(jour), lycee: new Map() },
       { college: regles, lycee: regles },
     )
-    expect(entorses.map((e) => e.regle).sort()).toEqual(['heuresCreusesBienPlacees', 'minDisciplinesParJour'])
+    expect(entorses.map((e) => e.regle).sort()).toEqual(['minDisciplinesParJour'])
   })
 })
 
@@ -246,39 +219,5 @@ describe('salles, tandems et troncs communs', () => {
     })
     expect(result.seances).toHaveLength(0)
     expect(result.unplaced[0]?.manquantes).toBe(1)
-  })
-})
-
-describe('demi-journée libre des professeurs', () => {
-  // 2 jours × (2 créneaux le matin + 2 l'après-midi) = 4 demi-journées
-  const slots: Slot[] = ['lundi', 'mardi'].flatMap((jour) => [
-    slot(`${jour}-1`, '08:00:00', '09:00:00', jour),
-    slot(`${jour}-2`, '09:00:00', '10:00:00', jour),
-    slot(`${jour}-3`, '14:00:00', '15:00:00', jour, true),
-    slot(`${jour}-4`, '15:00:00', '16:00:00', jour, true),
-  ])
-  const avecRegle = { ...REGLES_NEUTRES, demiJourneeLibreProfesseur: { actif: true } }
-  const demiJournees = (seances: { jour: string; creneauId: string }[]) =>
-    new Set(seances.map((s) => `${s.jour}|${slots.find((x) => x.creneauId === s.creneauId)!.apresMidi}`)).size
-
-  it('laisse au professeur au moins une demi-journée sans cours', () => {
-    const activites = [1, 2, 3, 4].map((section) =>
-      activite({ id: `a${section}`, classes: [{ niveau: '3e', section }], groupes: [prof('p1', 'Kone')] }),
-    )
-    for (let seed = 0; seed < 5; seed++) {
-      const result = solve(activites, { college: slots, lycee: [] }, { reglesByCycle: { college: avecRegle, lycee: avecRegle }, tentatives: 3 + seed })
-      expect(result.seances).toHaveLength(4)
-      expect(demiJournees(result.seances)).toBeLessThan(4)
-      expect(result.entorses.filter((e) => e.regle === 'demiJourneeLibreProfesseur')).toHaveLength(0)
-    }
-  })
-
-  it("signale le professeur quand c'est impossible, sans laisser de séance de côté", () => {
-    const activites = [1, 2, 3, 4, 5, 6, 7, 8].map((section) =>
-      activite({ id: `a${section}`, classes: [{ niveau: '3e', section }], groupes: [prof('p1', 'Kone')] }),
-    )
-    const result = solve(activites, { college: slots, lycee: [] }, { reglesByCycle: { college: avecRegle, lycee: avecRegle }, tentatives: 3 })
-    expect(result.seances).toHaveLength(8)
-    expect(result.entorses.filter((e) => e.regle === 'demiJourneeLibreProfesseur')).toHaveLength(1)
   })
 })

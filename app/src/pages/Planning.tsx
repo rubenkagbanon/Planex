@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { Lock, LockOpen, Printer, Undo2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/hooks/useProfile'
-import { EMPLOI_DU_TEMPS_QUERY_KEY, useEmploiDuTempsData, type EmploiDuTempsData } from '@/hooks/useEmploiDuTempsData'
+import { useEmploiDuTempsData, type EmploiDuTempsData } from '@/hooks/useEmploiDuTempsData'
+import { useEditionSeances } from '@/hooks/useEditionSeances'
 import { AppHeader } from '@/components/AppHeader'
 import { Button } from '@/components/ui/button'
 import { cycleForNiveau, type Cycle } from '@/lib/cycle'
 import { colorForMatiere } from '@/lib/matiereColor'
-import { calculerEchange, reaffecterSalles, verifierDeplacements, type Deplacement } from '@/lib/edition'
-import { analyserEntorses, groupSlotsByJour } from '@/lib/scheduling/entorses'
 import {
   classeLabel,
   construireLignes,
@@ -23,7 +20,6 @@ import {
   type GrilleLigne,
   type SeanceRow,
 } from '@/lib/timetable'
-import type { Json } from '@/lib/database.types'
 import { cn } from '@/lib/utils'
 
 type EntityType = 'classe' | 'professeur' | 'salle'
@@ -249,21 +245,14 @@ function Grille({
   )
 }
 
-interface Retour {
-  libelle: string
-  positions: Deplacement[]
-}
-
 export function Planning() {
   const { data: profile } = useProfile()
   const etablissementId = profile?.etablissement_id ?? null
-  const queryClient = useQueryClient()
   const { data } = useEmploiDuTempsData(etablissementId)
 
   const [entityType, setEntityType] = useState<EntityType>('classe')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const [message, setMessage] = useState<{ type: 'erreur' | 'info'; lignes: string[] } | null>(null)
-  const [historique, setHistorique] = useState<Retour[]>([])
+  const { message, setMessage, historique, deplacer, annuler, toggleLock, appliquerMutation, lockMutation } = useEditionSeances(data, etablissementId)
 
   useEffect(() => {
     setSelectedKey(null)
@@ -309,140 +298,6 @@ export function Planning() {
   }, [data, entityType])
 
   const selection = options.find((o) => o.key === selectedKey) ?? null
-
-  const invalider = () => queryClient.invalidateQueries({ queryKey: [EMPLOI_DU_TEMPS_QUERY_KEY, etablissementId] })
-
-  const appliquerMutation = useMutation({
-    mutationFn: async (deplacements: Deplacement[]) => {
-      const { error } = await supabase.rpc('appliquer_deplacements', {
-        p_deplacements: deplacements.map((d) => ({
-          id: d.id,
-          jour: d.jour,
-          creneau_id: d.creneauId,
-          salle_id: d.salleId,
-          verrouille: d.verrouille ?? null,
-        })) as unknown as Json,
-      })
-      if (error) throw error
-    },
-    onSuccess: invalider,
-    onError: (error) => setMessage({ type: 'erreur', lignes: [error instanceof Error ? error.message : 'Modification refusée.'] }),
-  })
-
-  const lockMutation = useMutation({
-    mutationFn: async ({ ids, verrouille }: { ids: string[]; verrouille: boolean }) => {
-      const { error } = await supabase.from('emploi_du_temps').update({ verrouille }).in('id', ids)
-      if (error) throw error
-    },
-    onSuccess: invalider,
-  })
-
-  function positionsActuelles(ids: string[]): Deplacement[] {
-    return (data?.seances ?? [])
-      .filter((s) => ids.includes(s.id))
-      .map((s) => ({ id: s.id, jour: s.jour, creneauId: s.creneau_id, salleId: s.salle_id, verrouille: s.verrouille }))
-  }
-
-  function deplacer(source: { jour: string; ligne: GrilleLigne }, cible: { jour: string; ligne: GrilleLigne }) {
-    if (!data || !selection) return
-    const seances = data.seances.filter(selection.filtre)
-    const contenuSource = seancesDeCase(seances, source.jour, source.ligne)
-    const contenuCible = seancesDeCase(seances, cible.jour, cible.ligne)
-    if (contenuSource.length === 0) return
-    // Cycle de la séance déplacée : dans la vue professeur, la grille peut mêler collège et lycée.
-    const cycle = contenuSource[0].cycle as Cycle
-    if (estVieScolaire(cible.jour, cible.ligne, data.contraintes, data.creneaux, [cycle])) {
-      setMessage({ type: 'erreur', lignes: ['Le mercredi après-midi est réservé à la vie scolaire.'] })
-      return
-    }
-    const premierCreneau = (ligne: GrilleLigne) => ligne.idsByCycle[cycle] ?? Object.values(ligne.idsByCycle).find(Boolean)
-    const creneauCible = premierCreneau(cible.ligne)
-    const creneauSource = premierCreneau(source.ligne)
-    if (!creneauCible || !creneauSource) return
-
-    // Vue professeur : si la case cible est libre pour le professeur mais que la classe y a cours avec un
-    // collègue, on échange les deux heures de la classe (le collègue reprend l'horaire de départ).
-    let contenuEchange = contenuCible
-    if (selection.type === 'professeur' && contenuCible.length === 0) {
-      const classes = new Set(contenuSource.map((s) => `${s.niveau}|${s.section}`))
-      contenuEchange = seancesDeCase(
-        data.seances.filter((s) => classes.has(`${s.niveau}|${s.section}`)),
-        cible.jour,
-        cible.ligne,
-      )
-    }
-
-    const creneauById = new Map(data.creneaux.map((c) => [c.id, c]))
-    const echange = calculerEchange(
-      data.seances,
-      contenuSource,
-      contenuEchange,
-      { jour: cible.jour, creneauId: creneauCible },
-      { jour: source.jour, creneauId: creneauSource },
-      creneauById,
-    )
-    if (typeof echange === 'string') {
-      setMessage({ type: 'erreur', lignes: [echange] })
-      return
-    }
-    // Salle occupée au nouvel horaire : une autre salle libre du même type est attribuée (ou aucune).
-    const { deplacements, changements: sallesChangees } = reaffecterSalles(data.seances, echange, data.salles, creneauById)
-    const conflits = verifierDeplacements(data.seances, deplacements, {
-      creneauById,
-      profNameById: data.profNameById,
-      salleById: new Map(data.salles.map((s) => [s.id, { nom: s.nom, capacite: s.capacite }])),
-      indisponibilites: data.indisponibilites,
-    })
-    if (conflits.length > 0) {
-      setMessage({ type: 'erreur', lignes: ['Déplacement impossible :', ...conflits] })
-      return
-    }
-
-    // Règles pédagogiques : simple avertissement (le censeur garde la main), comparé à avant le déplacement.
-    const parId = new Map(deplacements.map((d) => [d.id, d]))
-    const apres = data.seances.map((s) => {
-      const d = parId.get(s.id)
-      return d ? { ...s, jour: d.jour, creneau_id: d.creneauId } : s
-    })
-    const slotsByJourByCycle = {
-      college: groupSlotsByJour(data.slotsByCycle.college),
-      lycee: groupSlotsByJour(data.slotsByCycle.lycee),
-    }
-    const classesTouchees = new Set(apres.filter((s) => parId.has(s.id)).map((s) => `${s.niveau}|${s.section}`))
-    const analyser = (liste: SeanceRow[]) =>
-      analyserEntorses(
-        liste
-          .filter((s) => classesTouchees.has(`${s.niveau}|${s.section}`))
-          .map((s) => ({ niveau: s.niveau, section: s.section, matiere: s.matiere, cycle: s.cycle as Cycle, jour: s.jour, creneauId: s.creneau_id })),
-        slotsByJourByCycle,
-        data.reglesByCycle,
-      )
-    const avantDetails = new Set(analyser(data.seances).map((e) => e.detail))
-    const nouvelles = analyser(apres).filter((e) => !avantDetails.has(e.detail))
-
-    setHistorique((h) => [...h, { libelle: `${selection.label} — déplacement`, positions: positionsActuelles(deplacements.map((d) => d.id)) }])
-    appliquerMutation.mutate(deplacements)
-    setMessage(
-      nouvelles.length > 0
-        ? { type: 'info', lignes: ['Séance déplacée et verrouillée. Attention, règles pédagogiques non respectées :', ...nouvelles.map((e) => e.detail), ...sallesChangees] }
-        : { type: 'info', lignes: ['Séance déplacée et verrouillée : la prochaine génération la gardera à cette place.', ...sallesChangees] },
-    )
-  }
-
-  function annuler() {
-    const dernier = historique[historique.length - 1]
-    if (!dernier) return
-    setHistorique((h) => h.slice(0, -1))
-    appliquerMutation.mutate(dernier.positions)
-    setMessage({ type: 'info', lignes: ['Dernier déplacement annulé.'] })
-  }
-
-  function toggleLock(seances: SeanceRow[]) {
-    if (!data) return
-    const groupes = new Set(seances.map((s) => s.groupe_seance).filter(Boolean))
-    const ids = data.seances.filter((s) => seances.some((x) => x.id === s.id) || (s.groupe_seance && groupes.has(s.groupe_seance))).map((s) => s.id)
-    lockMutation.mutate({ ids, verrouille: !seances.every((s) => s.verrouille) })
-  }
 
   const seancesSelection = selection && data ? data.seances.filter(selection.filtre) : []
   const toutesVerrouillees = seancesSelection.length > 0 && seancesSelection.every((s) => s.verrouille)
@@ -544,7 +399,7 @@ export function Planning() {
             {selection.type !== 'salle' && (
               <p className="mb-3 text-xs text-muted-foreground">
                 {selection.type === 'classe'
-                  ? "Glisse une séance vers une autre case pour la déplacer (ou l'échanger avec la séance qui s'y trouve)."
+                  ? "Glisse une séance vers une autre case pour la déplacer (ou l'échanger avec la séance qui s'y trouve) ; une séance de 2h se déplace en bloc."
                   : "Glisse une heure du professeur vers une autre case : la classe concernée change d'horaire (si la case contient une autre classe du professeur, les deux heures sont échangées). La classe doit être libre au nouvel horaire, sinon ses deux heures sont échangées si l'autre professeur est disponible."}{' '}
                 Chaque modification est contrôlée (professeur, classe, salle, indisponibilités) puis verrouillée
                 🔒 : la prochaine génération la conservera.
@@ -566,7 +421,7 @@ export function Planning() {
               </div>
             )}
 
-            <Grille data={data} selection={selection} editable={selection.type !== 'salle'} onDeplacer={deplacer} onToggleLock={toggleLock} />
+            <Grille data={data} selection={selection} editable={selection.type !== 'salle'} onDeplacer={(source, cible) => deplacer({ ...selection, lignes: construireLignes(data.creneaux, selection.cycles), enBloc: true }, source, cible)} onToggleLock={toggleLock} />
 
             {seancesSelection.length === 0 && (
               <p className="mt-4 text-xs text-muted-foreground">

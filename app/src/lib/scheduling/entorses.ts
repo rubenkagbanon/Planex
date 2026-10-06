@@ -29,10 +29,7 @@ const POIDS: Record<keyof ReglesPedagogiques, number> = {
   eviterCoupurePause: 6,
   uneSeanceParJour: 5,
   minDisciplinesParJour: 3,
-  epsAuxBords: 20,
-  heuresCreusesBienPlacees: 6,
   tandemsAutomatiques: 0,
-  demiJourneeLibreProfesseur: 5,
 }
 
 function niveauLabel(niveauKey: string): string {
@@ -148,45 +145,6 @@ export function analyserEntorses(
       }
     }
 
-    // i : EPS hors des 2 premiers créneaux du matin / 2 derniers de l'après-midi
-    if (regles.epsAuxBords.actif) {
-      const duree = regles.epsAuxBords.duree
-      for (const seq of sequences.filter((s) => s.matiere === regles.epsAuxBords.matiere)) {
-        const matin = seq.debut === 0 && daySlots.slice(seq.debut, seq.fin + 1).every((s) => !s.apresMidi)
-        const soir = seq.fin === daySlots.length - 1 && daySlots.slice(seq.debut, seq.fin + 1).every((s) => s.apresMidi)
-        if ((!matin && !soir) || seq.fin - seq.debut + 1 !== duree) {
-          push('epsAuxBords', `${seq.matiere} à ${heure(daySlots[seq.debut].heureDebut)} (hors début de matinée / fin d'après-midi ou pas en ${duree}h)`)
-        }
-      }
-    }
-
-    // Heures creuses : jamais au milieu de la matinée, jamais coincées entre deux cours, et aucune
-    // discipline isolée entre deux heures creuses l'après-midi.
-    if (regles.heuresCreusesBienPlacees.actif) {
-      for (const apresMidi of [false, true]) {
-        const segment = daySlots.map((slot, i) => ({ slot, i })).filter(({ slot }) => slot.apresMidi === apresMidi)
-        const occupes = segment.filter(({ i }) => cases.has(i)).map(({ i }) => i)
-        if (occupes.length === 0) continue
-        const premier = occupes[0]
-        const dernier = occupes[occupes.length - 1]
-        // Matin : les heures creuses ne sont admises qu'en fin de matinée (donc ni avant le premier
-        // cours, ni entre deux cours). Après-midi : pas entre deux cours.
-        const debutSegment = segment[0].i
-        const trousAvant = apresMidi ? 0 : premier - debutSegment
-        let trousMilieu = 0
-        for (let i = premier; i <= dernier; i++) if (!cases.has(i)) trousMilieu++
-        if (trousAvant > 0) push('heuresCreusesBienPlacees', `${trousAvant} heure(s) creuse(s) en début de matinée`)
-        if (trousMilieu > 0) {
-          push('heuresCreusesBienPlacees', `${trousMilieu} heure(s) creuse(s) entre deux cours ${apresMidi ? "l'après-midi" : 'le matin'}`)
-        }
-        if (apresMidi) {
-          const finSegment = segment[segment.length - 1].i
-          if (occupes.length === 1 && premier > debutSegment && premier < finSegment) {
-            push('heuresCreusesBienPlacees', `cours isolé entre deux heures creuses l'après-midi`)
-          }
-        }
-      }
-    }
   }
 
   return entorses
@@ -194,48 +152,4 @@ export function analyserEntorses(
 
 export function penaliteEntorses(entorses: Entorse[]): number {
   return entorses.reduce((sum, e) => sum + POIDS[e.regle], 0)
-}
-
-export interface SeanceProfesseurPourAnalyse {
-  professeur: string
-  cycle: Cycle
-  jour: string
-  creneauId: string
-}
-
-// Demi-journées (jour + matin / après-midi) où au moins un cycle a cours : l'après-midi banalisé n'en
-// fait pas partie puisqu'il n'a aucun créneau.
-export function demiJourneesDeCours(slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>): Set<string> {
-  const result = new Set<string>()
-  for (const parJour of Object.values(slotsByJourByCycle)) {
-    for (const [jour, slots] of parJour) for (const slot of slots) result.add(`${jour}|${slot.apresMidi ? 'apres-midi' : 'matin'}`)
-  }
-  return result
-}
-
-// Professeurs qui ont cours à toutes les demi-journées de la semaine (règle "demi-journée libre").
-export function analyserDemiJourneesProfesseurs(
-  seances: SeanceProfesseurPourAnalyse[],
-  slotsByJourByCycle: Record<Cycle, Map<string, Slot[]>>,
-  reglesByCycle: Record<Cycle, ReglesPedagogiques>,
-): Entorse[] {
-  const total = demiJourneesDeCours(slotsByJourByCycle).size
-  const parProfesseur = new Map<string, { nom: string; demiJournees: Set<string>; actif: boolean }>()
-  for (const s of seances) {
-    const slot = slotsByJourByCycle[s.cycle]?.get(s.jour)?.find((x) => x.creneauId === s.creneauId)
-    if (!slot) continue
-    const key = s.professeur.trim().toLocaleLowerCase('fr-FR')
-    const entry = parProfesseur.get(key) ?? { nom: s.professeur, demiJournees: new Set<string>(), actif: false }
-    entry.demiJournees.add(`${s.jour}|${slot.apresMidi ? 'apres-midi' : 'matin'}`)
-    entry.actif ||= !!reglesByCycle[s.cycle]?.demiJourneeLibreProfesseur?.actif
-    parProfesseur.set(key, entry)
-  }
-  return [...parProfesseur.values()]
-    .filter((p) => p.actif && total > 1 && p.demiJournees.size >= total)
-    .map((p) => ({
-      regle: 'demiJourneeLibreProfesseur' as const,
-      classe: p.nom,
-      jour: '',
-      detail: `${p.nom} : cours à chacune des ${total} demi-journées, aucune demi-journée libre dans la semaine`,
-    }))
 }
