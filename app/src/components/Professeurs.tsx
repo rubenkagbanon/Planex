@@ -87,6 +87,8 @@ export function Professeurs() {
   const [filtreTexte, setFiltreTexte] = useState('')
   const [filtreMatiere, setFiltreMatiere] = useState('')
   const [filtreNiveau, setFiltreNiveau] = useState('')
+  const [epingles, setEpingles] = useState<Set<string>>(new Set())
+  const epingler = (key: string) => setEpingles((current) => (current.has(key) ? current : new Set(current).add(key)))
   const [tri, setTri] = useState<{ colonne: ColonneTri; sens: 'asc' | 'desc' }>({ colonne: 'nom', sens: 'asc' })
   const { grid: horairesGrid } = useHorairesGrid(etablissementId)
 
@@ -189,10 +191,13 @@ export function Professeurs() {
   })
 
   function addRow() {
-    setRows((current) => [emptyRow(), ...current])
+    const row = emptyRow()
+    epingler(row.key)
+    setRows((current) => [row, ...current])
   }
 
   function updateRow(key: string, patch: Partial<Omit<ProfesseurRow, 'key'>>) {
+    epingler(key)
     setRows((current) => current.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   }
 
@@ -266,6 +271,7 @@ export function Professeurs() {
   }
 
   function toggleNiveau(rowKey: string, niveauKey: string) {
+    epingler(rowKey)
     setRows((current) =>
       current.map((r) => {
         if (r.key !== rowKey) return r
@@ -281,6 +287,7 @@ export function Professeurs() {
   }
 
   function toggleClasse(rowKey: string, niveauKey: string, section: number) {
+    epingler(rowKey)
     setRows((current) =>
       current.map((r) => {
         if (r.key !== rowKey) return r
@@ -301,6 +308,21 @@ export function Professeurs() {
     const niveaux = rows.filter((r) => r.nomComplet === nom).flatMap((r) => classeCodesForRow(r))
     return [...new Set(niveaux.map((code) => cycleForNiveau(parseClasseCode(code).niveau)))]
   }
+
+  // Filtres communs aux deux vues. Une fiche modifiée depuis le dernier changement de filtre reste
+  // affichée, même si la modification la fait sortir du filtre (ex. changer sa matière).
+  const texteRecherche = filtreTexte.trim().toLocaleLowerCase('fr-FR')
+  const filtresActifs = !!(filtreTexte || filtreMatiere || filtreNiveau)
+  const filtrees = rows.filter((row) => {
+    if (epingles.has(row.key)) return true
+    if (filtreMatiere && row.matiere !== filtreMatiere) return false
+    if (filtreNiveau && !row.niveaux.includes(filtreNiveau)) return false
+    if (texteRecherche && !`${row.nomComplet} ${row.matiere} ${detailTextForRow(row)} ${row.remarque}`.toLocaleLowerCase('fr-FR').includes(texteRecherche)) {
+      return false
+    }
+    return true
+  })
+  const totalMinutes = filtrees.reduce((sum, row) => sum + computedVolumeMinutes(row, classesMap, horairesGrid), 0)
 
   return (
     <div className={viewMode === 'tableau' ? 'max-w-6xl' : 'max-w-7xl'}>
@@ -396,21 +418,74 @@ export function Professeurs() {
         </p>
       )}
 
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <Input
+          value={filtreTexte}
+          onChange={(e) => {
+            setFiltreTexte(e.target.value)
+            setEpingles(new Set())
+          }}
+          placeholder="Rechercher un professeur, une classe…"
+          className="h-9 w-64"
+        />
+        <select
+          value={filtreMatiere}
+          onChange={(e) => {
+            setFiltreMatiere(e.target.value)
+            setEpingles(new Set())
+          }}
+          className="h-9 rounded-md border border-border bg-card px-2 text-sm"
+        >
+          <option value="">Toutes les matières</option>
+          {DISCIPLINES.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filtreNiveau}
+          onChange={(e) => {
+            setFiltreNiveau(e.target.value)
+            setEpingles(new Set())
+          }}
+          className="h-9 rounded-md border border-border bg-card px-2 text-sm"
+        >
+          <option value="">Tous les niveaux</option>
+          {NIVEAUX_ETABLISSEMENT.map((n) => (
+            <option key={n.key} value={n.key}>
+              {n.label}
+            </option>
+          ))}
+        </select>
+        {filtresActifs && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setFiltreTexte('')
+              setFiltreMatiere('')
+              setFiltreNiveau('')
+              setEpingles(new Set())
+            }}
+          >
+            Effacer les filtres
+          </Button>
+        )}
+        <span className="ml-auto text-xs text-muted-foreground">
+          {filtrees.length} fiche{filtrees.length > 1 ? 's' : ''}
+          {filtresActifs ? ` sur ${rows.length}` : ''} · {formatVolumeLabel(totalMinutes)} au total
+        </span>
+      </div>
+
       {viewMode === 'tableau' && (() => {
-        const texte = filtreTexte.trim().toLocaleLowerCase('fr-FR')
-        const lignes = rows
+        const lignes = filtrees
           .map((row) => ({
             row,
             nbClasses: classeCodesForRow(row).length,
             detail: detailTextForRow(row),
             minutes: computedVolumeMinutes(row, classesMap, horairesGrid),
           }))
-          .filter(({ row, detail }) => {
-            if (filtreMatiere && row.matiere !== filtreMatiere) return false
-            if (filtreNiveau && !row.niveaux.includes(filtreNiveau)) return false
-            if (texte && !`${row.nomComplet} ${row.matiere} ${detail} ${row.remarque}`.toLocaleLowerCase('fr-FR').includes(texte)) return false
-            return true
-          })
           .sort((a, b) => {
             const cmp =
               tri.colonne === 'nom'
@@ -422,7 +497,6 @@ export function Professeurs() {
                     : a.minutes - b.minutes
             return tri.sens === 'asc' ? cmp : -cmp
           })
-        const totalMinutes = lignes.reduce((sum, l) => sum + l.minutes, 0)
         const enTete = (colonne: ColonneTri, label: ReactNode, centre = false) => {
           const actif = tri.colonne === colonne
           const Icone = !actif ? ArrowUpDown : tri.sens === 'asc' ? ArrowUp : ArrowDown
@@ -440,58 +514,8 @@ export function Professeurs() {
             </th>
           )
         }
-        const filtresActifs = !!(filtreTexte || filtreMatiere || filtreNiveau)
         return (
           <>
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-              <Input
-                value={filtreTexte}
-                onChange={(e) => setFiltreTexte(e.target.value)}
-                placeholder="Rechercher un professeur, une classe…"
-                className="h-9 w-64"
-              />
-              <select
-                value={filtreMatiere}
-                onChange={(e) => setFiltreMatiere(e.target.value)}
-                className="h-9 rounded-md border border-border bg-card px-2 text-sm"
-              >
-                <option value="">Toutes les matières</option>
-                {DISCIPLINES.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={filtreNiveau}
-                onChange={(e) => setFiltreNiveau(e.target.value)}
-                className="h-9 rounded-md border border-border bg-card px-2 text-sm"
-              >
-                <option value="">Tous les niveaux</option>
-                {NIVEAUX_ETABLISSEMENT.map((n) => (
-                  <option key={n.key} value={n.key}>
-                    {n.label}
-                  </option>
-                ))}
-              </select>
-              {filtresActifs && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setFiltreTexte('')
-                    setFiltreMatiere('')
-                    setFiltreNiveau('')
-                  }}
-                >
-                  Effacer les filtres
-                </Button>
-              )}
-              <span className="ml-auto text-xs text-muted-foreground">
-                {lignes.length} fiche{lignes.length > 1 ? 's' : ''}
-                {filtresActifs ? ` sur ${rows.length}` : ''} · {formatVolumeLabel(totalMinutes)} au total
-              </span>
-            </div>
             <div className="mb-6 overflow-x-auto rounded-xl border border-border">
               <table className="w-full border-collapse text-sm">
                 <thead>
@@ -542,7 +566,10 @@ export function Professeurs() {
 
       {viewMode === 'fiches' && (
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        {rows.map((row) => (
+        {filtrees.length === 0 && rows.length > 0 && (
+          <p className="text-sm text-muted-foreground lg:col-span-2">Aucun professeur ne correspond aux filtres.</p>
+        )}
+        {filtrees.map((row) => (
           <div key={row.key} className="rounded-xl border border-border bg-card p-5">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div className="flex flex-1 flex-col gap-2">
