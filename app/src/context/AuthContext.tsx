@@ -14,8 +14,6 @@ interface AuthContextValue {
     profile: { firstName: string; lastName: string; etablissement?: string; codeInvitation?: string },
   ) => ReturnType<typeof supabase.auth.signUp>
   signIn: (email: string, password: string) => ReturnType<typeof supabase.auth.signInWithPassword>
-  // Connexion ou inscription avec Google : un nouveau compte est créé sans établissement, à compléter sur /completer-profil
-  signInWithGoogle: () => ReturnType<typeof supabase.auth.signInWithOAuth>
   signOut: () => ReturnType<typeof supabase.auth.signOut>
 }
 
@@ -53,8 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       }),
     signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),
-    signInWithGoogle: () =>
-      supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/accueil` } }),
     signOut: () => supabase.auth.signOut(),
   }
 

@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label'
 import { ChampMotDePasse } from '@/components/ChampMotDePasse'
 import { traduireErreurAuth } from '@/lib/authErreurs'
 import { PlanexLogo } from '@/components/PlanexLogo'
-import { BoutonGoogle } from '@/components/BoutonGoogle'
 import { cn } from '@/lib/utils'
 
 type Mode = 'creer' | 'rejoindre'
@@ -93,7 +92,6 @@ export function Signup() {
       <div className="w-full max-w-sm">
         <h1 className="mb-6 text-center text-xl font-semibold text-foreground">Créer un compte Planex</h1>
 
-        <BoutonGoogle />
 
         <div className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-border bg-card p-1">
           {(
